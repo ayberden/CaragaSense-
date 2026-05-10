@@ -1,0 +1,10 @@
+{
+  "short_name": "CaragaSense",
+  "name": "CaragaSense AI Damage Detection",
+  "icons": [],
+  "start_url": "/",
+  "background_color": "#faf8ff",
+  "display": "standalone",
+  "scope": "/",
+  "theme_color": "#003d9b"
+}

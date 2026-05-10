@@ -1,0 +1,6 @@
+{
+  "name": "CaragaSense AI",
+  "description": "AI-powered Road Damage Detection System PWA",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": []
+}
