@@ -1,41 +1,70 @@
 'use client';
-import { Filter } from 'lucide-react';
+import { Filter, Loader2 } from 'lucide-react';
 import Image from 'next/image';
+import { useReports, useUpdateReportStatus } from '@/hooks/use-reports';
+import type { Report, SeverityLevel } from '@/lib/database.types';
 
-const MOCK_DAMAGES = [
-  {
-    id: "PH-1092",
-    type: "Deep Pothole",
-    severity: "High",
-    severityColor: "bg-error-container text-on-error-container",
-    dotColor: "bg-severity-high",
-    confidence: "98%",
-    location: "Main St. & 4th Ave",
-    image: "https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=200&q=80"
+const SEVERITY_STYLES: Record<SeverityLevel, { badge: string; dot: string }> = {
+  critical: {
+    badge: 'bg-error-container text-on-error-container',
+    dot: 'bg-severity-high',
   },
-  {
-    id: "CR-881",
-    type: "Surface Crack",
-    severity: "Medium",
-    severityColor: "bg-secondary-fixed text-on-secondary-fixed-variant",
-    dotColor: "bg-severity-medium",
-    confidence: "85%",
-    location: "Oak Ln. Sector 2",
-    image: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=200&q=80"
+  high: {
+    badge: 'bg-error-container text-on-error-container',
+    dot: 'bg-severity-high',
   },
-  {
-    id: "FM-22",
-    type: "Faded Markings",
-    severity: "Low",
-    severityColor: "bg-surface-container text-severity-low",
-    dotColor: "bg-severity-low",
-    confidence: "92%",
-    location: "Hwy 9 Northbound",
-    image: "https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=200&q=80"
-  }
-];
+  medium: {
+    badge: 'bg-secondary-fixed text-on-secondary-fixed-variant',
+    dot: 'bg-severity-medium',
+  },
+  low: {
+    badge: 'bg-surface-container text-severity-low',
+    dot: 'bg-severity-low',
+  },
+};
+
+const DAMAGE_LABELS: Record<string, string> = {
+  pothole: 'Pothole',
+  longitudinal_crack: 'Longitudinal Crack',
+  transverse_crack: 'Transverse Crack',
+  rutting: 'Rutting',
+  faded_markings: 'Faded Markings',
+  other: 'Other Damage',
+};
+
+function formatConfidence(confidence: number | null): string {
+  if (confidence === null) return 'N/A';
+  return `${Math.round(confidence * 100)}%`;
+}
+
+function getReportImage(report: Report): string {
+  return report.image_url || 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=200&q=80';
+}
 
 export function TriageView() {
+  // Fetch reports that are NOT fixed/dismissed (the active triage queue)
+  const { reports, isLoading, error } = useReports({
+    status: ['reported', 'verified', 'scheduled', 'in_progress'],
+  });
+  const { updateStatus, isUpdating } = useUpdateReportStatus();
+
+  const handleDispatch = async (reportId: string) => {
+    await updateStatus(reportId, 'verified');
+  };
+
+  const handleDismiss = async (reportId: string) => {
+    await updateStatus(reportId, 'dismissed');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-4 md:p-8 flex flex-col items-center justify-center h-full">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <p className="text-on-surface-variant mt-3 font-mono text-sm">Loading triage queue...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-8 flex flex-col h-full max-w-7xl mx-auto w-full">
       <header className="mb-8">
@@ -43,87 +72,138 @@ export function TriageView() {
         <p className="font-sans text-lg text-on-surface-variant">Review and dispatch field operations based on AI detection confidence.</p>
       </header>
 
-      {/* Desktop Table View */}
-      <div className="hidden md:block bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm overflow-hidden flex-1">
-        <div className="px-6 py-4 border-b border-outline-variant bg-surface-muted flex justify-between items-center">
-          <h3 className="font-headline text-xl font-bold text-on-surface">Detection Queue</h3>
-          <button className="flex items-center gap-2 text-primary text-sm hover:underline font-bold">
-            <Filter className="w-4 h-4" /> Filter
-          </button>
+      {error && (
+        <div className="bg-error-container/50 border border-error/20 text-on-error-container rounded-lg px-4 py-3 text-sm mb-4">
+          Failed to load reports: {error}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-surface font-mono text-xs uppercase tracking-widest text-on-surface-variant border-b border-outline-variant">
-                <th className="px-6 py-4 font-bold">Damage Type</th>
-                <th className="px-6 py-4 font-bold">Severity</th>
-                <th className="px-6 py-4 font-bold">Location</th>
-                <th className="px-6 py-4 font-bold">Confidence</th>
-                <th className="px-6 py-4 font-bold text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="font-sans text-sm">
-              {MOCK_DAMAGES.map(damage => (
-                <tr key={damage.id} className="border-b border-outline-variant hover:bg-surface-muted transition-colors">
-                  <td className="px-6 py-4 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded overflow-hidden relative border border-outline-variant shrink-0">
-                      <Image src={damage.image} alt={damage.type} fill className="object-cover" unoptimized referrerPolicy="no-referrer" />
-                    </div>
-                    <span className="font-bold text-base text-on-surface">{damage.type}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-xs font-bold ${damage.severityColor}`}>
-                      <span className={`w-2 h-2 rounded-full ${damage.dotColor}`}></span> {damage.severity}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-base text-on-surface-variant">{damage.location}</td>
-                  <td className="px-6 py-4 text-base text-on-surface-variant font-mono">{damage.confidence}</td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-3 tracking-wide">
-                      <button className="text-on-surface-variant hover:text-error font-semibold transition-colors">Dismiss</button>
-                      <button className="bg-primary text-on-primary px-4 py-2 rounded-lg font-semibold hover:opacity-90 transition-opacity">Dispatch</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
 
-      {/* Mobile Card View */}
-      <div className="md:hidden flex flex-col gap-4 pb-16">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="font-headline text-lg font-bold text-on-surface">Detection Queue</h3>
-          <button className="text-primary text-sm font-bold flex items-center gap-1">
-             <Filter className="w-4 h-4"/> Filter
-          </button>
+      {reports.length === 0 && !error ? (
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-8 shadow-sm flex-1 flex flex-col items-center justify-center text-center">
+          <h2 className="text-xl font-bold mb-2">No pending reports</h2>
+          <p className="text-on-surface-variant">All road damage reports have been processed.</p>
         </div>
-        {MOCK_DAMAGES.map(damage => (
-          <div key={damage.id} className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col">
-            <div className="h-32 w-full relative">
-               <Image src={damage.image} alt={damage.type} fill className="object-cover" unoptimized referrerPolicy="no-referrer" />
-               <div className="absolute top-2 left-2">
-                 <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded shadow text-[10px] font-mono font-bold ${damage.severityColor}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${damage.dotColor}`}></span> {damage.severity}
-                 </span>
-               </div>
+      ) : (
+        <>
+          {/* Desktop Table View */}
+          <div className="hidden md:block bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm overflow-hidden flex-1">
+            <div className="px-6 py-4 border-b border-outline-variant bg-surface-muted flex justify-between items-center">
+              <h3 className="font-headline text-xl font-bold text-on-surface">
+                Detection Queue
+                <span className="ml-2 text-sm font-mono text-on-surface-variant font-normal">({reports.length})</span>
+              </h3>
+              <button className="flex items-center gap-2 text-primary text-sm hover:underline font-bold">
+                <Filter className="w-4 h-4" /> Filter
+              </button>
             </div>
-            <div className="p-4 flex flex-col">
-              <div className="flex justify-between items-start mb-1">
-                <h4 className="font-bold text-lg text-on-surface">{damage.type}</h4>
-                <span className="font-mono text-xs text-primary font-bold bg-primary-container/20 px-2 py-1 rounded">{damage.confidence}</span>
-              </div>
-              <p className="text-sm text-on-surface-variant mb-4">{damage.location}</p>
-              
-              <div className="flex gap-2">
-                <button className="flex-1 bg-surface-container-high text-on-surface py-2 rounded-lg font-semibold text-sm transition-colors active:bg-surface-variant">Dismiss</button>
-                <button className="flex-1 bg-primary text-on-primary py-2 rounded-lg font-semibold text-sm transition-colors active:scale-95 shadow-sm">Dispatch</button>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-surface font-mono text-xs uppercase tracking-widest text-on-surface-variant border-b border-outline-variant">
+                    <th className="px-6 py-4 font-bold">Damage Type</th>
+                    <th className="px-6 py-4 font-bold">Severity</th>
+                    <th className="px-6 py-4 font-bold">Location</th>
+                    <th className="px-6 py-4 font-bold">Confidence</th>
+                    <th className="px-6 py-4 font-bold text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="font-sans text-sm">
+                  {reports.map(report => {
+                    const styles = SEVERITY_STYLES[report.severity];
+                    return (
+                      <tr key={report.id} className="border-b border-outline-variant hover:bg-surface-muted transition-colors">
+                        <td className="px-6 py-4 flex items-center gap-4">
+                          <div className="w-12 h-12 rounded overflow-hidden relative border border-outline-variant shrink-0">
+                            <Image src={getReportImage(report)} alt={report.damage_type} fill className="object-cover" unoptimized referrerPolicy="no-referrer" />
+                          </div>
+                          <span className="font-bold text-base text-on-surface">{DAMAGE_LABELS[report.damage_type] || report.damage_type}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-xs font-bold ${styles.badge}`}>
+                            <span className={`w-2 h-2 rounded-full ${styles.dot}`}></span> {report.severity.charAt(0).toUpperCase() + report.severity.slice(1)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-base text-on-surface-variant">{report.address || `${report.latitude.toFixed(4)}, ${report.longitude.toFixed(4)}`}</td>
+                        <td className="px-6 py-4 text-base text-on-surface-variant font-mono">{formatConfidence(report.confidence)}</td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-3 tracking-wide">
+                            <button
+                              onClick={() => handleDismiss(report.id)}
+                              disabled={isUpdating}
+                              className="text-on-surface-variant hover:text-error font-semibold transition-colors disabled:opacity-50"
+                            >
+                              Dismiss
+                            </button>
+                            <button
+                              onClick={() => handleDispatch(report.id)}
+                              disabled={isUpdating}
+                              className="bg-primary text-on-primary px-4 py-2 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                            >
+                              Dispatch
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
-        ))}
-      </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden flex flex-col gap-4 pb-16">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-headline text-lg font-bold text-on-surface">
+                Detection Queue
+                <span className="ml-1 text-sm font-mono text-on-surface-variant font-normal">({reports.length})</span>
+              </h3>
+              <button className="text-primary text-sm font-bold flex items-center gap-1">
+                 <Filter className="w-4 h-4"/> Filter
+              </button>
+            </div>
+            {reports.map(report => {
+              const styles = SEVERITY_STYLES[report.severity];
+              return (
+                <div key={report.id} className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col">
+                  <div className="h-32 w-full relative">
+                     <Image src={getReportImage(report)} alt={report.damage_type} fill className="object-cover" unoptimized referrerPolicy="no-referrer" />
+                     <div className="absolute top-2 left-2">
+                       <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded shadow text-[10px] font-mono font-bold ${styles.badge}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${styles.dot}`}></span> {report.severity.charAt(0).toUpperCase() + report.severity.slice(1)}
+                       </span>
+                     </div>
+                  </div>
+                  <div className="p-4 flex flex-col">
+                    <div className="flex justify-between items-start mb-1">
+                      <h4 className="font-bold text-lg text-on-surface">{DAMAGE_LABELS[report.damage_type] || report.damage_type}</h4>
+                      <span className="font-mono text-xs text-primary font-bold bg-primary-container/20 px-2 py-1 rounded">{formatConfidence(report.confidence)}</span>
+                    </div>
+                    <p className="text-sm text-on-surface-variant mb-4">{report.address || `${report.latitude.toFixed(4)}, ${report.longitude.toFixed(4)}`}</p>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleDismiss(report.id)}
+                        disabled={isUpdating}
+                        className="flex-1 bg-surface-container-high text-on-surface py-2 rounded-lg font-semibold text-sm transition-colors active:bg-surface-variant disabled:opacity-50"
+                      >
+                        Dismiss
+                      </button>
+                      <button
+                        onClick={() => handleDispatch(report.id)}
+                        disabled={isUpdating}
+                        className="flex-1 bg-primary text-on-primary py-2 rounded-lg font-semibold text-sm transition-colors active:scale-95 shadow-sm disabled:opacity-50"
+                      >
+                        Dispatch
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/lib/auth-context';
 import { Sidebar } from '@/components/sidebar';
 import { TopNav } from '@/components/top-nav';
 import { BottomNav } from '@/components/bottom-nav';
@@ -8,12 +9,44 @@ import { TriageView } from '@/components/triage-view';
 import { AlertsView } from '@/components/alerts-view';
 import { MapViewMobile } from '@/components/map-view-mobile';
 import { FAB } from '@/components/fab';
+import { CitizenView } from '@/components/citizen-view';
+import { Loader2 } from 'lucide-react';
 
 export type AppTab = 'dashboard' | 'triage' | 'alerts' | 'map' | 'analytics';
 
+function LoadingScreen() {
+  return (
+    <div className="h-screen flex flex-col items-center justify-center bg-surface gap-3">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <p className="text-on-surface-variant font-mono text-sm tracking-wider">LOADING SYSTEM...</p>
+    </div>
+  );
+}
+
 export default function AppShell() {
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
+  const [hasMounted, setHasMounted] = useState(false);
+  const { profile, isLoading } = useAuth();
 
+  // Prevent hydration mismatch: server and first client render
+  // both show the loading screen. After mount, show real content.
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  // Show loading on both server SSR and client until mounted + auth resolved
+  if (!hasMounted || isLoading) {
+    return <LoadingScreen />;
+  }
+
+  // ── CITIZEN VIEW ──────────────────────────────────────────
+  // Citizens get their own mobile-optimized reporting interface
+  if (profile?.role === 'citizen' || !profile?.role) {
+    return <CitizenView />;
+  }
+
+  // ── ADMIN / ENGINEER VIEW ────────────────────────────────
+  // Full command center dashboard with triage, map, analytics
   return (
     <div className="bg-background text-on-background font-sans h-screen flex flex-col overflow-hidden">
       <TopNav />
@@ -39,3 +72,4 @@ export default function AppShell() {
     </div>
   );
 }
+

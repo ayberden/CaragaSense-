@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, Work_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { PwaRegistry } from '@/components/pwa-registry';
+import { AuthProvider } from '@/lib/auth-context';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const workSans = Work_Sans({ subsets: ['latin'], variable: '--font-work-sans' });
@@ -22,7 +23,9 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
     <html lang="en" className={`${inter.variable} ${workSans.variable} ${jetBrainsMono.variable}`}>
       <body className="antialiased font-sans bg-surface text-slate-900" suppressHydrationWarning>
         <PwaRegistry />
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

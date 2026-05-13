@@ -1,12 +1,16 @@
+'use client';
+
 import { useState, useRef } from 'react';
 import { VideoFeed } from './video-feed';
 import { MapView } from './map-view';
-import { Radar, UploadCloud, Loader2 } from 'lucide-react';
+import { Radar, UploadCloud, Loader2, AlertTriangle, TrendingUp, CheckCircle2, Clock } from 'lucide-react';
+import { useReportStats } from '@/hooks/use-reports';
 
 export function DashboardView() {
   const [streamUrl, setStreamUrl] = useState<string | undefined>();
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { stats, isLoading: statsLoading } = useReportStats();
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -38,7 +42,6 @@ export function DashboardView() {
       alert("Failed to connect to the Python API. Ensure the Python server is running on port 5000.");
     } finally {
       setIsUploading(false);
-      // Reset input so the same file can be uploaded again if needed
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -49,10 +52,61 @@ export function DashboardView() {
     setStreamUrl(`http://${window.location.hostname}:5000/video_feed`);
   };
 
+  const statCards = [
+    {
+      label: 'Total Reports',
+      value: stats?.total_reports ?? '—',
+      icon: TrendingUp,
+      color: 'text-primary',
+      bgColor: 'bg-primary/10',
+    },
+    {
+      label: 'Critical / High',
+      value: stats ? `${(stats.critical_count || 0) + (stats.high_count || 0)}` : '—',
+      icon: AlertTriangle,
+      color: 'text-severity-high',
+      bgColor: 'bg-severity-high/10',
+    },
+    {
+      label: 'In Progress',
+      value: stats?.in_progress_count ?? '—',
+      icon: Clock,
+      color: 'text-severity-medium',
+      bgColor: 'bg-severity-medium/10',
+    },
+    {
+      label: 'Resolved',
+      value: stats?.fixed_count ?? '—',
+      icon: CheckCircle2,
+      color: 'text-severity-low',
+      bgColor: 'bg-severity-low/10',
+    },
+  ];
+
   return (
     <div className="flex-1 flex flex-col md:flex-row gap-4 h-full p-4 md:p-8">
-      {/* Left Column: Video Feed & Controls */}
+      {/* Left Column: Stats, Video Feed & Controls */}
       <div className="w-full md:w-[60%] flex flex-col gap-4 h-[calc(100vh-140px)] md:h-[calc(100vh-120px)]">
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+          {statCards.map((card) => (
+            <div
+              key={card.label}
+              className="bg-surface-container-lowest rounded-xl p-3 border border-outline-variant shadow-sm flex items-center gap-3"
+            >
+              <div className={`w-10 h-10 rounded-lg ${card.bgColor} flex items-center justify-center shrink-0`}>
+                <card.icon className={`w-5 h-5 ${card.color}`} />
+              </div>
+              <div>
+                <p className="font-mono text-xl font-bold text-on-surface leading-tight">
+                  {statsLoading ? <span className="inline-block w-6 h-5 bg-surface-container animate-pulse rounded" /> : card.value}
+                </p>
+                <p className="text-[10px] font-mono text-on-surface-variant uppercase tracking-wider leading-tight">{card.label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
         <VideoFeed url={streamUrl} />
         
         {/* Hidden file input */}
