@@ -1,15 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth-context';
 import { useReports, useCreateReport, useUploadImage } from '@/hooks/use-reports';
 import {
   Camera, MapPin, Clock, CheckCircle2, AlertTriangle,
-  Plus, X, Loader2, Send, Image as ImageIcon, LogOut, Radar, UploadCloud
+  Plus, X, Loader2, Send, Image as ImageIcon, LogOut, Radar, UploadCloud, Video
 } from 'lucide-react';
 import Image from 'next/image';
 import { VideoFeed } from './video-feed';
+import { CameraScanner } from './camera-scanner';
+import type { Detection } from './camera-scanner';
+import { countDetections, generateDescription, getDominantType, inferSeverity, getMaxConfidence, getDamageLabel, mapClassToDamageType } from '@/lib/detection-utils';
 import type { Report, DamageType, SeverityLevel, ReportStatus } from '@/lib/database.types';
 
 const LocationPickerMap = dynamic(() => import('./location-picker'), { ssr: false });
@@ -57,11 +60,11 @@ function StatusTimeline({ currentStatus }: { currentStatus: ReportStatus }) {
   );
 }
 
-function ReportCard({ report }: { report: Report }) {
+function ReportCard({ report, onClick }: { report: Report; onClick?: () => void }) {
   const styles = SEVERITY_STYLES[report.severity];
   const img = report.image_url || 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=300&q=80';
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={onClick}>
       <div className="h-36 w-full relative">
         <Image src={img} alt={report.damage_type} fill className="object-cover" unoptimized referrerPolicy="no-referrer" />
         <div className="absolute top-2 left-2">
@@ -92,13 +95,13 @@ function ReportCard({ report }: { report: Report }) {
   );
 }
 
-function NewReportModal({ onClose }: { onClose: () => void }) {
+function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: { damageType?: DamageType; severity?: SeverityLevel; description?: string; confidence?: number; detections?: Detection[] } }) {
   const { user } = useAuth();
   const { createReport, isSubmitting } = useCreateReport();
   const { uploadImage, isUploading } = useUploadImage();
-  const [damageType, setDamageType] = useState<DamageType>('pothole');
-  const [severity, setSeverity] = useState<SeverityLevel>('medium');
-  const [description, setDescription] = useState('');
+  const [damageType, setDamageType] = useState<DamageType>(prefill?.damageType || 'pothole');
+  const [severity, setSeverity] = useState<SeverityLevel>(prefill?.severity || 'medium');
+  const [description, setDescription] = useState(prefill?.description || '');
   const [address, setAddress] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -214,22 +217,40 @@ function NewReportModal({ onClose }: { onClose: () => void }) {
 }
 
 type CitizenTab = 'reports' | 'scan';
+type ScanMode = 'camera' | 'upload' | 'video';
 
-export function CitizenView() {
+export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) => void }) {
   const { user, profile, signOut } = useAuth();
   const [showNewReport, setShowNewReport] = useState(false);
   const [activeTab, setActiveTab] = useState<CitizenTab>('reports');
+  const [scanMode, setScanMode] = useState<ScanMode>('camera');
   const [streamUrl, setStreamUrl] = useState<string | undefined>();
   const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useState<HTMLInputElement | null>(null);
+  const [allDetections, setAllDetections] = useState<Detection[]>([]);
+  const [reportPrefill, setReportPrefill] = useState<{ damageType?: DamageType; severity?: SeverityLevel; description?: string; confidence?: number; detections?: Detection[] } | undefined>();
 
   const { reports, isLoading } = useReports();
   const myReports = reports.filter((r) => r.reporter_id === user?.id);
   const pendingCount = myReports.filter((r) => !['fixed', 'dismissed'].includes(r.status)).length;
   const resolvedCount = myReports.filter((r) => r.status === 'fixed').length;
 
-  const handleLiveScan = () => {
+  const detCounts = countDetections(allDetections);
+  const totalDetections = allDetections.length;
+
+  const handleCameraDetections = useCallback((dets: Detection[]) => {
+    if (dets.length > 0) setAllDetections((prev) => [...prev, ...dets]);
+  }, []);
+
+  const handleStartCamera = () => {
+    setScanMode('camera');
+    setAllDetections([]);
+    setActiveTab('scan');
+  };
+
+  const handleVideoStream = () => {
+    setScanMode('video');
     setStreamUrl(`http://${window.location.hostname}:5000/video_feed`);
+    setAllDetections([]);
     setActiveTab('scan');
   };
 
@@ -237,16 +258,34 @@ export function CitizenView() {
     const file = event.target.files?.[0];
     if (!file) return;
     setIsUploading(true);
+    setAllDetections([]);
     const formData = new FormData();
     formData.append('file', file);
     try {
       const apiUrl = `http://${window.location.hostname}:5000/upload`;
-      const response = await fetch(apiUrl, { method: 'POST', body: formData });
-      const data = await response.json();
-      if (response.ok && data.url) { setStreamUrl(data.url); setActiveTab('scan'); }
-      else alert("Upload failed: " + (data.error || "Unknown error"));
-    } catch { alert("Failed to connect to Python API. Ensure it's running on port 5000."); }
+      const resp = await fetch(apiUrl, { method: 'POST', body: formData });
+      const data = await resp.json();
+      if (resp.ok && data.url) {
+        setStreamUrl(data.url);
+        setScanMode('upload');
+        setActiveTab('scan');
+        const dets: Detection[] = data.detections || [{ class: data.damage_type || 'pothole', confidence: data.confidence || 0.85 }];
+        setAllDetections(dets);
+      } else alert('Upload failed: ' + (data.error || 'Unknown error'));
+    } catch { alert("Failed to connect to Python API."); }
     finally { setIsUploading(false); }
+  };
+
+  const handleReportFromDetection = () => {
+    const prefill = {
+      damageType: getDominantType(allDetections),
+      severity: inferSeverity(allDetections),
+      description: generateDescription(allDetections),
+      confidence: getMaxConfidence(allDetections),
+      detections: allDetections,
+    };
+    setReportPrefill(prefill);
+    setShowNewReport(true);
   };
 
   return (
@@ -274,7 +313,7 @@ export function CitizenView() {
       <div className="bg-surface border-b border-outline-variant px-4 shrink-0">
         <div className="max-w-2xl mx-auto flex">
           <button onClick={() => setActiveTab('reports')} className={`flex-1 py-3 text-sm font-bold font-headline text-center border-b-2 transition-colors ${activeTab === 'reports' ? 'text-primary border-primary' : 'text-on-surface-variant border-transparent hover:bg-surface-container-high'}`}>My Reports</button>
-          <button onClick={handleLiveScan} className={`flex-1 py-3 text-sm font-bold font-headline text-center border-b-2 transition-colors ${activeTab === 'scan' ? 'text-primary border-primary' : 'text-on-surface-variant border-transparent hover:bg-surface-container-high'}`}>AI Scanner</button>
+          <button onClick={handleStartCamera} className={`flex-1 py-3 text-sm font-bold font-headline text-center border-b-2 transition-colors ${activeTab === 'scan' ? 'text-primary border-primary' : 'text-on-surface-variant border-transparent hover:bg-surface-container-high'}`}>AI Scanner</button>
         </div>
       </div>
 
@@ -315,7 +354,7 @@ export function CitizenView() {
                   <button onClick={() => setShowNewReport(true)} className="bg-primary text-on-primary px-6 py-2.5 rounded-lg font-bold text-sm inline-flex items-center gap-2"><Plus className="w-4 h-4" /> Report Damage</button>
                 </div>
               ) : (
-                <div className="grid gap-4">{myReports.map((r) => <ReportCard key={r.id} report={r} />)}</div>
+                <div className="grid gap-4">{myReports.map((r) => <ReportCard key={r.id} report={r} onClick={() => onViewReport?.(r)} />)}</div>
               )}
             </div>
           </>
@@ -323,20 +362,67 @@ export function CitizenView() {
 
         {activeTab === 'scan' && (
           <div className="px-4 py-6 max-w-2xl mx-auto flex flex-col gap-4">
-            <div className="h-[50vh] min-h-[300px]">
-              <VideoFeed url={streamUrl} />
-            </div>
-            <div className="bg-surface-container-lowest rounded-xl p-4 flex gap-3 border border-outline-variant shadow-sm">
-              <button onClick={handleLiveScan} className="flex-1 bg-primary text-on-primary font-headline font-bold py-3 rounded-lg flex items-center justify-center gap-2 text-sm active:scale-[0.98] transition-transform">
-                <Radar className="w-5 h-5" />Live Scan
+            {/* Mode Selector */}
+            <div className="bg-surface-container-lowest rounded-xl p-3 flex gap-2 border border-outline-variant shadow-sm">
+              <button onClick={handleStartCamera} className={`flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-all ${scanMode === 'camera' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high'}`}>
+                <Camera className="w-4 h-4" />Camera
               </button>
-              <label className={`flex-1 bg-surface-muted text-on-surface hover:bg-surface-variant font-headline font-bold py-3 rounded-lg flex items-center justify-center gap-2 text-sm border border-outline-variant transition-colors cursor-pointer ${isUploading ? 'opacity-50' : ''}`}>
-                {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <UploadCloud className="w-5 h-5" />}
+              <button onClick={handleVideoStream} className={`flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-all ${scanMode === 'video' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high'}`}>
+                <Video className="w-4 h-4" />Video Feed
+              </button>
+              <label className={`flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${scanMode === 'upload' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high'} ${isUploading ? 'opacity-50' : ''}`}>
+                {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
                 Upload
                 <input type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" disabled={isUploading} />
               </label>
             </div>
-            <p className="text-xs text-on-surface-variant text-center font-mono">Point your camera at road damage for real-time AI detection</p>
+
+            {/* Scanner View */}
+            <div className="h-[50vh] min-h-[300px]">
+              {scanMode === 'camera' ? (
+                <CameraScanner isActive={activeTab === 'scan' && scanMode === 'camera'} onDetections={handleCameraDetections} />
+              ) : (
+                <VideoFeed url={streamUrl} />
+              )}
+            </div>
+
+            {/* Detection Counter Panel */}
+            {totalDetections > 0 && (
+              <div className="bg-surface-container-lowest border border-primary/30 rounded-xl p-4 shadow-sm ring-1 ring-primary/10">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Radar className="w-4 h-4 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-on-surface">Detection Summary</h4>
+                      <p className="text-[10px] font-mono text-on-surface-variant">{totalDetections} total detection{totalDetections !== 1 ? 's' : ''}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setAllDetections([])} className="text-[10px] font-mono text-outline hover:text-error transition-colors">Reset</button>
+                </div>
+                {/* Count chips */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {Object.entries(detCounts).map(([label, count]) => (
+                    <div key={label} className="flex items-center gap-1.5 bg-surface-container rounded-full px-3 py-1.5">
+                      <span className="w-2 h-2 rounded-full bg-primary" />
+                      <span className="text-xs font-medium text-on-surface">{label}</span>
+                      <span className="font-mono text-xs font-bold text-primary">{count}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* AI Description */}
+                <div className="bg-surface-muted rounded-lg px-3 py-2 mb-3">
+                  <p className="text-[10px] font-mono text-on-surface-variant uppercase tracking-wider mb-1">AI Generated Description</p>
+                  <p className="text-xs text-on-surface leading-relaxed">{generateDescription(allDetections)}</p>
+                </div>
+                <button onClick={handleReportFromDetection} className="w-full bg-primary text-on-primary font-headline font-bold py-3 rounded-lg flex items-center justify-center gap-2 text-sm shadow-sm active:scale-[0.98] transition-transform">
+                  <Send className="w-4 h-4" />Report This Detection
+                </button>
+              </div>
+            )}
+
+            <p className="text-xs text-on-surface-variant text-center font-mono">Use your camera or upload images/video for AI road damage detection</p>
           </div>
         )}
       </main>
@@ -346,7 +432,7 @@ export function CitizenView() {
         <Plus className="w-7 h-7" />
       </button>
 
-      {showNewReport && <NewReportModal onClose={() => setShowNewReport(false)} />}
+      {showNewReport && <NewReportModal prefill={reportPrefill} onClose={() => { setShowNewReport(false); setReportPrefill(undefined); }} />}
     </div>
   );
 }

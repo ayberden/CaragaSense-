@@ -1,5 +1,6 @@
 import { AppTab } from '@/app/page';
-import { LayoutDashboard, CheckSquare, AlertTriangle, BarChart3, Settings, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, AlertTriangle, BarChart3, Settings, HelpCircle, Users } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 
 interface SidebarProps {
   activeTab: AppTab;
@@ -7,12 +8,18 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
-  const navItems = [
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+
+  const navItems: { id: AppTab; label: string; icon: React.ComponentType<{ className?: string }>; adminOnly?: boolean }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'triage', label: 'Triage', icon: CheckSquare },
     { id: 'alerts', label: 'Alerts', icon: AlertTriangle },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-  ] as const;
+    { id: 'users', label: 'Users', icon: Users, adminOnly: true },
+  ];
+
+  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <nav className="bg-surface-container-low w-[280px] h-full sticky left-0 border-r border-outline-variant shadow-none flex-col py-4 hidden md:flex z-40 shrink-0">
@@ -21,7 +28,7 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
         <p className="font-sans text-sm text-on-surface-variant">Municipal Engineering</p>
       </div>
       <div className="flex-1 flex flex-col gap-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = activeTab === item.id;
           return (
             <button
