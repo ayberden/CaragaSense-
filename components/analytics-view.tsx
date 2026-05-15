@@ -302,7 +302,7 @@ export function AnalyticsView() {
                     wrapperStyle={{ fontSize: '11px', fontFamily: 'monospace' }}
                   />
                   <Tooltip
-                    formatter={(value: number) => [`${value} reports`, '']}
+                    formatter={(value: any) => [`${value} reports`, '']}
                     contentStyle={{
                       backgroundColor: '#2f3036', color: '#fff', border: 'none',
                       borderRadius: '8px', fontSize: '11px', fontFamily: 'monospace',
@@ -371,7 +371,7 @@ export function AnalyticsView() {
                     wrapperStyle={{ fontSize: '11px', fontFamily: 'monospace', lineHeight: '22px' }}
                   />
                   <Tooltip
-                    formatter={(value: number) => [`${value} reports`, '']}
+                    formatter={(value: any) => [`${value} reports`, '']}
                     contentStyle={{
                       backgroundColor: '#2f3036', color: '#fff', border: 'none',
                       borderRadius: '8px', fontSize: '11px', fontFamily: 'monospace',
