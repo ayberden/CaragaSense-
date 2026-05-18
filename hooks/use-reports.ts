@@ -19,6 +19,8 @@ export function useReports(filters?: {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const filterString = JSON.stringify(filters);
+
   const fetchReports = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -56,7 +58,7 @@ export function useReports(filters?: {
       setReports(data || []);
     }
     setIsLoading(false);
-  }, [filters?.status, filters?.severity, filters?.limit]);
+  }, [filterString]);
 
   useEffect(() => {
     fetchReports();
@@ -225,10 +227,22 @@ export function useReportStats() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase.rpc as any)('get_report_stats').then(({ data }: { data: any }) => {
-      if (data && Array.isArray(data) && data.length > 0) {
-        setStats(data[0]);
+    supabase.from('reports').select('*').then(({ data, error }) => {
+      if (data) {
+        setStats({
+          total_reports: data.length,
+          critical_count: data.filter((r: any) => r.severity === 'critical').length,
+          high_count: data.filter((r: any) => r.severity === 'high').length,
+          medium_count: data.filter((r: any) => r.severity === 'medium').length,
+          low_count: data.filter((r: any) => r.severity === 'low').length,
+          reported_count: data.filter((r: any) => r.status === 'reported').length,
+          verified_count: data.filter((r: any) => r.status === 'verified').length,
+          scheduled_count: data.filter((r: any) => r.status === 'scheduled').length,
+          in_progress_count: data.filter((r: any) => r.status === 'in_progress').length,
+          fixed_count: data.filter((r: any) => r.status === 'fixed').length,
+        });
+      } else {
+        console.error('Failed to load stats:', error);
       }
       setIsLoading(false);
     });

@@ -152,11 +152,12 @@ export function TriageView({ onViewReport }: { onViewReport?: (report: Report) =
 
   const handleDispatch = async (e: React.MouseEvent, reportId: string) => {
     e.stopPropagation();
-    await updateStatus(reportId, 'verified');
+    await updateStatus(reportId, 'in_progress');
   };
 
   const handleDismiss = async (e: React.MouseEvent, reportId: string) => {
     e.stopPropagation();
+    if (!window.confirm('Are you sure you want to dismiss this report? This action cannot be undone.')) return;
     await updateStatus(reportId, 'dismissed');
   };
 
