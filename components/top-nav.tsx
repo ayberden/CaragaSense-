@@ -31,8 +31,8 @@ export function TopNav() {
       <div className="flex items-center gap-4">
         <span className="font-headline text-2xl font-bold text-primary">CaragaSense AI</span>
       </div>
-      <div className="flex items-center gap-4 hidden md:flex">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-4">
+        <div className="hidden md:flex items-center gap-2">
           <CloudSun className="text-primary w-5 h-5" />
         </div>
         <NetworkStatus />
@@ -41,7 +41,7 @@ export function TopNav() {
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="flex items-center gap-2 pl-4 border-l border-outline-variant hover:bg-surface-container-high rounded-lg px-2 py-1.5 transition-colors"
+            className="flex items-center gap-2 md:pl-4 md:border-l border-outline-variant hover:bg-surface-container-high rounded-lg md:px-2 py-1.5 transition-colors"
           >
             <div className="w-8 h-8 rounded-full bg-primary-container overflow-hidden border border-outline-variant flex items-center justify-center">
               <User className="w-5 h-5 text-on-primary-container" />
@@ -50,7 +50,7 @@ export function TopNav() {
               <p className="text-xs font-bold text-on-surface leading-tight">{displayName}</p>
               <p className="text-[10px] font-mono text-on-surface-variant leading-tight uppercase tracking-wider">{roleLabel}</p>
             </div>
-            <ChevronDown className={`w-4 h-4 text-outline transition-transform ${showMenu ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-4 h-4 text-outline hidden md:block transition-transform ${showMenu ? 'rotate-180' : ''}`} />
           </button>
 
           {showMenu && (
@@ -72,11 +72,6 @@ export function TopNav() {
             </div>
           )}
         </div>
-      </div>
-      {/* Mobile Top Nav items */}
-      <div className="flex items-center gap-4 md:hidden">
-        <CloudSun className="text-primary w-5 h-5" />
-        <NetworkStatus />
       </div>
     </header>
   );

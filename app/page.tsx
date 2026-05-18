@@ -46,7 +46,7 @@ export default function AppShell() {
 
   // ── CITIZEN VIEW ──────────────────────────────────────────
   // Citizens get their own mobile-optimized reporting interface
-  if (profile?.role === 'citizen' || !profile?.role) {
+  if (profile?.role === 'citizen') {
     return (
       <>
         <CitizenView onViewReport={setSelectedReport} />

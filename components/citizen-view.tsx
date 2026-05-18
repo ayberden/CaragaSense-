@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth-context';
 import { useReports, useCreateReport, useUploadImage } from '@/hooks/use-reports';
@@ -108,6 +108,26 @@ function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: {
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!coords) return;
+    const fetchAddress = async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.lat}&lon=${coords.lng}&zoom=18&addressdetails=1`);
+        const data = await res.json();
+        if (data && data.display_name) {
+          const parts = [];
+          if (data.address.road) parts.push(data.address.road);
+          if (data.address.suburb || data.address.village || data.address.neighbourhood) parts.push(data.address.suburb || data.address.village || data.address.neighbourhood);
+          if (data.address.city || data.address.town) parts.push(data.address.city || data.address.town);
+          if (parts.length > 0) setAddress(parts.join(', '));
+          else setAddress(data.display_name.split(',').slice(0, 3).join(', '));
+        }
+      } catch (err) { console.error('Geocoding failed:', err); }
+    };
+    const timer = setTimeout(fetchAddress, 800);
+    return () => clearTimeout(timer);
+  }, [coords]);
 
   const handleGetLocation = () => {
     if (!navigator.geolocation) { setError('Geolocation not supported'); return; }
@@ -238,7 +258,7 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
   const totalDetections = allDetections.length;
 
   const handleCameraDetections = useCallback((dets: Detection[]) => {
-    if (dets.length > 0) setAllDetections((prev) => [...prev, ...dets]);
+    if (dets.length > 0) setAllDetections((prev) => [...prev, ...dets].slice(-100));
   }, []);
 
   const handleStartCamera = () => {
