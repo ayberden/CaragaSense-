@@ -84,9 +84,9 @@ export function DashboardView() {
   ];
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row gap-4 h-full p-4 md:p-8">
-      {/* Left Column: Stats, Video Feed & Controls */}
-      <div className="w-full md:w-[60%] flex flex-col gap-4 h-[calc(100vh-140px)] md:h-[calc(100vh-120px)]">
+    <div className="flex-1 flex flex-col gap-6 h-full p-4 md:p-8 overflow-y-auto">
+      {/* Top Section: Stats, Video Feed & Controls */}
+      <div className="w-full flex flex-col gap-4 shrink-0">
         {/* Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
           {statCards.map((card) => (
@@ -138,8 +138,8 @@ export function DashboardView() {
           </button>
         </div>
       </div>
-      {/* Right Column: GIS Map (Hidden on mobile inside standard Dashboard tab, rendered in its own tab) */}
-      <div className="hidden md:flex md:w-[40%] h-[calc(100vh-120px)] flex-col">
+      {/* Bottom Section: GIS Map (Hidden on mobile inside standard Dashboard tab, rendered in its own tab) */}
+      <div className="hidden md:flex w-full min-h-[600px] flex-col shrink-0">
         <MapView />
       </div>
     </div>
