@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, Work_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import 'leaflet/dist/leaflet.css';
 import { PwaRegistry } from '@/components/pwa-registry';
 import { AuthProvider } from '@/lib/auth-context';
 import { ToastProvider } from '@/components/toast-provider';

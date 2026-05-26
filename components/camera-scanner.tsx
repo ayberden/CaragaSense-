@@ -11,10 +11,11 @@ export interface Detection {
 
 interface CameraScannerProps {
   onDetections: (dets: Detection[]) => void;
+  onAnnotatedImage?: (src: string | null) => void;
   isActive: boolean;
 }
 
-export function CameraScanner({ onDetections, isActive }: CameraScannerProps) {
+export function CameraScanner({ onDetections, onAnnotatedImage, isActive }: CameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -88,7 +89,10 @@ export function CameraScanner({ onDetections, isActive }: CameraScannerProps) {
         if (resp.ok) {
           const data = await resp.json();
           if (data.detections) onDetections(data.detections);
-          if (data.annotated_image) setAnnotatedSrc(data.annotated_image);
+          if (data.annotated_image) {
+            setAnnotatedSrc(data.annotated_image);
+            onAnnotatedImage?.(data.annotated_image);
+          }
         }
       } catch { /* API not reachable, silent fail */ }
       finally { setIsProcessing(false); }

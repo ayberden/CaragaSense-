@@ -95,7 +95,7 @@ function ReportCard({ report, onClick }: { report: Report; onClick?: () => void 
   );
 }
 
-function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: { damageType?: DamageType; severity?: SeverityLevel; description?: string; confidence?: number; detections?: Detection[] } }) {
+function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: { damageType?: DamageType; severity?: SeverityLevel; description?: string; confidence?: number; detections?: Detection[]; imageSrc?: string } }) {
   const { user } = useAuth();
   const { createReport, isSubmitting } = useCreateReport();
   const { uploadImage, isUploading } = useUploadImage();
@@ -104,10 +104,28 @@ function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: {
   const [description, setDescription] = useState(prefill?.description || '');
   const [address, setAddress] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(prefill?.imageSrc || null);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // If a prefill imageSrc is provided (base64 or URL), convert it to a File for upload
+  useEffect(() => {
+    if (!prefill?.imageSrc) return;
+    const src = prefill.imageSrc;
+    // If it's a base64 data URL, convert to File
+    if (src.startsWith('data:')) {
+      fetch(src)
+        .then((r) => r.blob())
+        .then((blob) => {
+          const file = new File([blob], 'detection.jpg', { type: 'image/jpeg' });
+          setImageFile(file);
+        })
+        .catch(() => { /* silent fail – preview still shows */ });
+    }
+    // If it's a remote URL, we store the URL directly (uploaded separately by API)
+    // The image_url will be set via the url on submit
+  }, [prefill?.imageSrc]);
 
   useEffect(() => {
     if (!coords) return;
@@ -149,7 +167,12 @@ function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: {
     if (!coords) { setError('Please tag your location first'); return; }
     setError(null);
     let imageUrl: string | null = null;
-    if (imageFile) imageUrl = await uploadImage(imageFile);
+    if (imageFile) {
+      imageUrl = await uploadImage(imageFile);
+    } else if (prefill?.imageSrc && !prefill.imageSrc.startsWith('data:')) {
+      // It's already a remote URL (from upload endpoint), use directly
+      imageUrl = prefill.imageSrc;
+    }
     const result = await createReport({ reporter_id: user?.id, damage_type: damageType, severity, description: description || null, latitude: coords.lat, longitude: coords.lng, address: address || null, image_url: imageUrl });
     if (result) onClose();
   };
@@ -189,10 +212,18 @@ function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: {
 
           {/* Photo */}
           <div className="space-y-2">
-            <label className="text-sm font-bold text-on-surface font-headline">Photo (Optional)</label>
+            <label className="text-sm font-bold text-on-surface font-headline">
+              Photo {prefill?.imageSrc ? <span className="text-primary font-mono text-xs ml-1">✦ Auto-filled from AI detection</span> : '(Optional)'}
+            </label>
             {imagePreview ? (
-              <div className="relative h-40 rounded-lg overflow-hidden border border-outline-variant">
+              <div className="relative h-40 rounded-lg overflow-hidden border border-primary/40 ring-1 ring-primary/20">
                 <Image src={imagePreview} alt="Preview" fill className="object-cover" unoptimized />
+                {prefill?.imageSrc && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-sm px-3 py-1.5 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                    <span className="text-[10px] font-mono text-primary font-bold tracking-widest">AI DETECTION IMAGE</span>
+                  </div>
+                )}
                 <button type="button" onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full"><X className="w-4 h-4" /></button>
               </div>
             ) : (
@@ -247,7 +278,8 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
   const [streamUrl, setStreamUrl] = useState<string | undefined>();
   const [isUploading, setIsUploading] = useState(false);
   const [allDetections, setAllDetections] = useState<Detection[]>([]);
-  const [reportPrefill, setReportPrefill] = useState<{ damageType?: DamageType; severity?: SeverityLevel; description?: string; confidence?: number; detections?: Detection[] } | undefined>();
+  const [annotatedImageSrc, setAnnotatedImageSrc] = useState<string | null>(null);
+  const [reportPrefill, setReportPrefill] = useState<{ damageType?: DamageType; severity?: SeverityLevel; description?: string; confidence?: number; detections?: Detection[]; imageSrc?: string } | undefined>();
 
   const { reports, isLoading } = useReports();
   const myReports = reports.filter((r) => r.reporter_id === user?.id);
@@ -261,9 +293,14 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
     if (dets.length > 0) setAllDetections((prev) => [...prev, ...dets].slice(-100));
   }, []);
 
+  const handleAnnotatedImage = useCallback((src: string | null) => {
+    setAnnotatedImageSrc(src);
+  }, []);
+
   const handleStartCamera = () => {
     setScanMode('camera');
     setAllDetections([]);
+    setAnnotatedImageSrc(null);
     setActiveTab('scan');
   };
 
@@ -271,6 +308,7 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
     setScanMode('video');
     setStreamUrl(`http://${window.location.hostname}:5000/video_feed`);
     setAllDetections([]);
+    setAnnotatedImageSrc(null);
     setActiveTab('scan');
   };
 
@@ -279,6 +317,7 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
     if (!file) return;
     setIsUploading(true);
     setAllDetections([]);
+    setAnnotatedImageSrc(null);
     const formData = new FormData();
     formData.append('file', file);
     try {
@@ -291,6 +330,8 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
         setActiveTab('scan');
         const dets: Detection[] = data.detections || [{ class: data.damage_type || 'pothole', confidence: data.confidence || 0.85 }];
         setAllDetections(dets);
+        // For image uploads: the API returns a result URL with the annotated image
+        if (data.type === 'image') setAnnotatedImageSrc(data.url);
       } else alert('Upload failed: ' + (data.error || 'Unknown error'));
     } catch { alert("Failed to connect to Python API."); }
     finally { setIsUploading(false); }
@@ -303,6 +344,7 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
       description: generateDescription(allDetections),
       confidence: getMaxConfidence(allDetections),
       detections: allDetections,
+      imageSrc: annotatedImageSrc ?? undefined,
     };
     setReportPrefill(prefill);
     setShowNewReport(true);
@@ -400,7 +442,7 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
             {/* Scanner View */}
             <div className="h-[50vh] min-h-[300px]">
               {scanMode === 'camera' ? (
-                <CameraScanner isActive={activeTab === 'scan' && scanMode === 'camera'} onDetections={handleCameraDetections} />
+                <CameraScanner isActive={activeTab === 'scan' && scanMode === 'camera'} onDetections={handleCameraDetections} onAnnotatedImage={handleAnnotatedImage} />
               ) : (
                 <VideoFeed url={streamUrl} />
               )}

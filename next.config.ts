@@ -1,6 +1,7 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ['10.10.12.185', 'localhost', '127.0.0.1'],
   reactStrictMode: true,
   eslint: {
     ignoreDuringBuilds: true,
