@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { VideoOff, Wifi } from 'lucide-react';
+import { getPythonApiUrl } from '@/lib/api-config';
 
 interface VideoFeedProps {
   url?: string;
@@ -14,7 +15,7 @@ export function VideoFeed({ url, onStop }: VideoFeedProps) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    setDefaultUrl(`http://${window.location.hostname}:5000/video_feed`);
+    setDefaultUrl(`${getPythonApiUrl()}/video_feed`);
   }, []);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -60,10 +61,10 @@ export function VideoFeed({ url, onStop }: VideoFeedProps) {
                 <div>
                   <p className="text-white/70 font-mono text-sm font-bold mb-1">CAMERA UNAVAILABLE</p>
                   <p className="text-white/40 text-xs font-mono leading-relaxed">
-                    No camera source detected.<br />
-                    Click <span className="text-[#00E5FF]">Live Auto-Scan</span> or <span className="text-[#00E5FF]">Manual Upload</span> below<br />
-                    to start YOLO detection.
-                  </p>
+                  No camera source detected.<br />
+                  On deployment, set <span className="text-[#00E5FF]">NEXT_PUBLIC_PYTHON_API_URL</span><br />
+                  to your Python API server URL.
+                </p>
                 </div>
                 <div className="flex items-center gap-2 text-white/30 text-[10px] font-mono">
                   <Wifi className="w-3 h-3" />

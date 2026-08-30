@@ -13,6 +13,7 @@ import { VideoFeed } from './video-feed';
 import { CameraScanner } from './camera-scanner';
 import type { Detection } from './camera-scanner';
 import { countDetections, generateDescription, getDominantType, inferSeverity, getMaxConfidence, getDamageLabel, mapClassToDamageType } from '@/lib/detection-utils';
+import { getPythonApiUrl } from '@/lib/api-config';
 import type { Report, DamageType, SeverityLevel, ReportStatus } from '@/lib/database.types';
 
 const LocationPickerMap = dynamic(() => import('./location-picker'), { ssr: false });
@@ -280,6 +281,7 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
   const [allDetections, setAllDetections] = useState<Detection[]>([]);
   const [annotatedImageSrc, setAnnotatedImageSrc] = useState<string | null>(null);
   const [reportPrefill, setReportPrefill] = useState<{ damageType?: DamageType; severity?: SeverityLevel; description?: string; confidence?: number; detections?: Detection[]; imageSrc?: string } | undefined>();
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { reports, isLoading } = useReports();
   const myReports = reports.filter((r) => r.reporter_id === user?.id);
@@ -306,9 +308,10 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
 
   const handleVideoStream = () => {
     setScanMode('video');
-    setStreamUrl(`http://${window.location.hostname}:5000/video_feed`);
+    setStreamUrl(`${getPythonApiUrl()}/video_feed`);
     setAllDetections([]);
     setAnnotatedImageSrc(null);
+    setUploadError(null);
     setActiveTab('scan');
   };
 
@@ -318,10 +321,11 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
     setIsUploading(true);
     setAllDetections([]);
     setAnnotatedImageSrc(null);
+    setUploadError(null);
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const apiUrl = `http://${window.location.hostname}:5000/upload`;
+      const apiUrl = `${getPythonApiUrl()}/upload`;
       const resp = await fetch(apiUrl, { method: 'POST', body: formData });
       const data = await resp.json();
       if (resp.ok && data.url) {
@@ -330,11 +334,15 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
         setActiveTab('scan');
         const dets: Detection[] = data.detections || [{ class: data.damage_type || 'pothole', confidence: data.confidence || 0.85 }];
         setAllDetections(dets);
-        // For image uploads: the API returns a result URL with the annotated image
         if (data.type === 'image') setAnnotatedImageSrc(data.url);
-      } else alert('Upload failed: ' + (data.error || 'Unknown error'));
-    } catch { alert("Failed to connect to Python API."); }
-    finally { setIsUploading(false); }
+      } else {
+        setUploadError('Upload failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch {
+      setUploadError('The AI Detection API is not reachable. Make sure the Python server is running locally, or configure NEXT_PUBLIC_PYTHON_API_URL for deployment.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleReportFromDetection = () => {
@@ -447,6 +455,22 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
                 <VideoFeed url={streamUrl} onStop={scanMode === 'upload' ? handleStartCamera : undefined} />
               )}
             </div>
+
+            {/* API Error Banner */}
+            {uploadError && (
+              <div className="bg-error-container border border-error/30 rounded-xl p-4 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-error/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertTriangle className="w-4 h-4 text-error" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-on-error-container mb-0.5">AI Detection Unavailable</p>
+                  <p className="text-xs text-on-error-container/80 leading-relaxed">{uploadError}</p>
+                </div>
+                <button onClick={() => setUploadError(null)} className="text-on-error-container/60 hover:text-on-error-container shrink-0">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             {/* Detection Counter Panel */}
             {totalDetections > 0 && (
