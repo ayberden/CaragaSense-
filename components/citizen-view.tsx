@@ -444,7 +444,7 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
               {scanMode === 'camera' ? (
                 <CameraScanner isActive={activeTab === 'scan' && scanMode === 'camera'} onDetections={handleCameraDetections} onAnnotatedImage={handleAnnotatedImage} />
               ) : (
-                <VideoFeed url={streamUrl} />
+                <VideoFeed url={streamUrl} onStop={scanMode === 'upload' ? handleStartCamera : undefined} />
               )}
             </div>
 

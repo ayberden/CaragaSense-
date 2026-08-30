@@ -119,6 +119,7 @@ export function TriageView({ onViewReport }: { onViewReport?: (report: Report) =
   });
   const { updateStatus, isUpdating } = useUpdateReportStatus();
   const [showFilter, setShowFilter] = useState(false);
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     severity: [] as SeverityLevel[],
     damageType: [] as DamageType[],
@@ -228,7 +229,8 @@ export function TriageView({ onViewReport }: { onViewReport?: (report: Report) =
                     return (
                       <tr key={report.id} className="border-b border-outline-variant hover:bg-surface-muted transition-colors cursor-pointer" onClick={() => onViewReport?.(report)}>
                         <td className="px-6 py-4 flex items-center gap-4">
-                          <div className="w-12 h-12 rounded overflow-hidden relative border border-outline-variant shrink-0">
+                          <div className="w-12 h-12 rounded overflow-hidden relative border border-outline-variant shrink-0 cursor-pointer"
+                               onClick={(e) => { e.stopPropagation(); setFullscreenImage(getReportImage(report)); }}>
                             <Image src={getReportImage(report)} alt={report.damage_type} fill className="object-cover" unoptimized referrerPolicy="no-referrer" />
                           </div>
                           <span className="font-bold text-base text-on-surface">{DAMAGE_LABELS[report.damage_type] || report.damage_type}</span>
@@ -284,7 +286,7 @@ export function TriageView({ onViewReport }: { onViewReport?: (report: Report) =
               const styles = SEVERITY_STYLES[report.severity];
               return (
                 <div key={report.id} className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col cursor-pointer" onClick={() => onViewReport?.(report)}>
-                  <div className="h-32 w-full relative">
+                  <div className="h-32 w-full relative cursor-pointer" onClick={(e) => { e.stopPropagation(); setFullscreenImage(getReportImage(report)); }}>
                     <Image src={getReportImage(report)} alt={report.damage_type} fill className="object-cover" unoptimized referrerPolicy="no-referrer" />
                     <div className="absolute top-2 left-2">
                       <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded shadow text-[10px] font-mono font-bold ${styles.badge}`}>
@@ -315,6 +317,25 @@ export function TriageView({ onViewReport }: { onViewReport?: (report: Report) =
             })}
           </div>
         </>
+      )}
+
+      {fullscreenImage && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4" onClick={() => setFullscreenImage(null)}>
+          <div className="relative max-w-[95vw] max-h-[95vh] flex flex-col items-center justify-center">
+            <button 
+              className="absolute -top-10 right-0 text-white hover:text-gray-300 p-2 font-mono text-sm bg-black/50 rounded-lg"
+              onClick={() => setFullscreenImage(null)}
+            >
+              CLOSE (Esc)
+            </button>
+            <img 
+              src={fullscreenImage} 
+              alt="Full size detection" 
+              className="max-w-full max-h-[90vh] object-contain rounded border border-white/20"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
