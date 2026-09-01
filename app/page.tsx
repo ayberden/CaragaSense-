@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { Sidebar } from '@/components/sidebar';
 import { TopNav } from '@/components/top-nav';
@@ -31,18 +32,25 @@ export default function AppShell() {
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [hasMounted, setHasMounted] = useState(false);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
-  const { profile, isLoading } = useAuth();
+  const { user, profile, isLoading } = useAuth();
+  const router = useRouter();
 
-  // Prevent hydration mismatch: server and first client render
-  // both show the loading screen. After mount, show real content.
   useEffect(() => {
     setHasMounted(true);
   }, []);
 
-  // Show loading on both server SSR and client until mounted + auth resolved
-  if (!hasMounted || isLoading) {
+  // Redirect to login if not authenticated after loading
+  useEffect(() => {
+    if (hasMounted && !isLoading && !user) {
+      router.replace('/login');
+    }
+  }, [hasMounted, isLoading, user, router]);
+
+  // Show loading while mounting, auth resolving, or redirecting
+  if (!hasMounted || isLoading || !user) {
     return <LoadingScreen />;
   }
+
 
   // ── CITIZEN VIEW ──────────────────────────────────────────
   // Citizens get their own mobile-optimized reporting interface

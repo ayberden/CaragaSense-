@@ -22,11 +22,13 @@ const STATUS_ICONS: Record<string, string> = {
 
 const DAMAGE_LABELS: Record<string, string> = {
   pothole: 'Pothole',
+  open_manhole: 'Open Manhole',
+  alligator_crack: 'Alligator Crack',
+  block_crack: 'Block Crack',
   longitudinal_crack: 'Long. Crack',
   transverse_crack: 'Trans. Crack',
   rutting: 'Rutting',
-  faded_markings: 'Faded Marks',
-  other: 'Other',
+  other: 'Other Damages',
 };
 
 function createReportMarker(report: Report, map: L.Map) {

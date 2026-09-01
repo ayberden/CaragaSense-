@@ -33,7 +33,7 @@ export function VideoFeed({ url, onStop }: VideoFeedProps) {
   return (
     <>
       <div className="flex flex-col h-full w-full gap-4">
-        <div className="flex-1 relative bg-surface-container-lowest rounded-xl overflow-hidden border border-outline-variant shadow-sm flex flex-col min-h-[300px]">
+        <div className="w-full h-full relative bg-surface-container-lowest rounded-xl overflow-hidden border border-outline-variant shadow-sm flex flex-col min-h-[300px]">
           {/* Glassmorphic Header */}
           <div className="absolute top-0 left-0 right-0 bg-inverse-surface/70 backdrop-blur-md p-3 flex justify-between items-center z-10 border-b border-white/10 pointer-events-none">
             <div className="flex items-center gap-3">
@@ -61,10 +61,10 @@ export function VideoFeed({ url, onStop }: VideoFeedProps) {
                 <div>
                   <p className="text-white/70 font-mono text-sm font-bold mb-1">CAMERA UNAVAILABLE</p>
                   <p className="text-white/40 text-xs font-mono leading-relaxed">
-                  No camera source detected.<br />
-                  On deployment, set <span className="text-[#00E5FF]">NEXT_PUBLIC_PYTHON_API_URL</span><br />
-                  to your Python API server URL.
-                </p>
+                    No camera source detected.<br />
+                    On deployment, set <span className="text-[#00E5FF]">NEXT_PUBLIC_PYTHON_API_URL</span><br />
+                    to your Python API server URL.
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 text-white/30 text-[10px] font-mono">
                   <Wifi className="w-3 h-3" />
@@ -106,15 +106,15 @@ export function VideoFeed({ url, onStop }: VideoFeedProps) {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={() => setIsModalOpen(false)}>
           <div className="relative max-w-[95vw] max-h-[95vh] flex flex-col items-center justify-center">
-            <button 
+            <button
               className="absolute -top-10 right-0 text-white hover:text-gray-300 p-2 font-mono text-sm bg-black/50 rounded-lg"
               onClick={() => setIsModalOpen(false)}
             >
               CLOSE (Esc)
             </button>
-            <img 
-              src={streamUrl} 
-              alt="Full size detection" 
+            <img
+              src={streamUrl}
+              alt="Full size detection"
               className="max-w-full max-h-[90vh] object-contain rounded border border-white/20"
               onClick={(e) => e.stopPropagation()}
             />

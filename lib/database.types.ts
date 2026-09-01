@@ -6,10 +6,12 @@
 
 export type DamageType =
   | 'pothole'
+  | 'open_manhole'
+  | 'alligator_crack'
+  | 'block_crack'
   | 'longitudinal_crack'
   | 'transverse_crack'
   | 'rutting'
-  | 'faded_markings'
   | 'other';
 
 export type SeverityLevel = 'low' | 'medium' | 'high' | 'critical';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, CameraOff, Loader2, FlipHorizontal } from 'lucide-react';
+import { Camera, CameraOff, Loader2, FlipHorizontal, Square } from 'lucide-react';
 
 export interface Detection {
   class: string;
@@ -13,9 +13,11 @@ interface CameraScannerProps {
   onDetections: (dets: Detection[]) => void;
   onAnnotatedImage?: (src: string | null) => void;
   isActive: boolean;
+  onCameraReadyChange?: (ready: boolean) => void;
+  onStop?: () => void;
 }
 
-export function CameraScanner({ onDetections, onAnnotatedImage, isActive }: CameraScannerProps) {
+export function CameraScanner({ onDetections, onAnnotatedImage, isActive, onCameraReadyChange, onStop }: CameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -25,6 +27,10 @@ export function CameraScanner({ onDetections, onAnnotatedImage, isActive }: Came
   const [isProcessing, setIsProcessing] = useState(false);
   const [annotatedSrc, setAnnotatedSrc] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+
+  useEffect(() => {
+    onCameraReadyChange?.(cameraReady);
+  }, [cameraReady, onCameraReadyChange]);
 
   const startCamera = useCallback(async () => {
     setCameraError(null);
@@ -110,7 +116,7 @@ export function CameraScanner({ onDetections, onAnnotatedImage, isActive }: Came
   };
 
   return (
-    <div className="flex-1 relative bg-black rounded-xl overflow-hidden border border-outline-variant shadow-sm min-h-[300px] flex items-center justify-center">
+    <div className="w-full h-full relative bg-black rounded-xl overflow-hidden border border-outline-variant shadow-sm min-h-[300px] flex items-center justify-center">
       {/* Hidden canvas for frame capture */}
       <canvas ref={canvasRef} className="hidden" />
 
@@ -151,6 +157,17 @@ export function CameraScanner({ onDetections, onAnnotatedImage, isActive }: Came
             </div>
             <div className="flex gap-2 items-center">
               {isProcessing && <Loader2 className="w-4 h-4 text-white animate-spin" />}
+              {cameraReady && onStop && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onStop(); }}
+                  className="bg-error/90 hover:bg-error text-white px-2.5 py-1 rounded-lg border border-white/20 text-[10px] font-mono font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+                  title="Stop Live Camera"
+                >
+                  <Square className="w-3 h-3 fill-current" />
+                  Stop Camera
+                </button>
+              )}
               <button onClick={flipCamera} className="bg-white/10 p-1.5 rounded-lg border border-white/20 text-white hover:bg-white/20 transition-colors">
                 <FlipHorizontal className="w-4 h-4" />
               </button>

@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useReports, useCreateReport, useUploadImage } from '@/hooks/use-reports';
 import {
   Camera, MapPin, Clock, CheckCircle2, AlertTriangle,
-  Plus, X, Loader2, Send, Image as ImageIcon, LogOut, Radar, UploadCloud, Video
+  Plus, X, Loader2, Send, Image as ImageIcon, LogOut, Radar, UploadCloud, Video, CameraOff
 } from 'lucide-react';
 import Image from 'next/image';
 import { VideoFeed } from './video-feed';
@@ -34,9 +34,14 @@ const SEVERITY_STYLES: Record<SeverityLevel, { badge: string; dot: string }> = {
 };
 
 const DAMAGE_LABELS: Record<string, string> = {
-  pothole: 'Pothole', longitudinal_crack: 'Longitudinal Crack',
-  transverse_crack: 'Transverse Crack', rutting: 'Rutting',
-  faded_markings: 'Faded Markings', other: 'Other Damage',
+  pothole: 'Pothole',
+  open_manhole: 'Open Manhole',
+  alligator_crack: 'Alligator Crack',
+  block_crack: 'Block Crack',
+  longitudinal_crack: 'Longitudinal Crack',
+  transverse_crack: 'Transverse Crack',
+  rutting: 'Rutting',
+  other: 'Other Damages',
 };
 
 function StatusTimeline({ currentStatus }: { currentStatus: ReportStatus }) {
@@ -214,7 +219,7 @@ function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: {
           {/* Photo */}
           <div className="space-y-2">
             <label className="text-sm font-bold text-on-surface font-headline">
-              Photo {prefill?.imageSrc ? <span className="text-primary font-mono text-xs ml-1">✦ Auto-filled from AI detection</span> : '(Optional)'}
+              Photo {prefill?.imageSrc ? <span className="text-primary font-mono text-xs ml-1">✦ Auto-filled from YOLO detection</span> : '(Optional)'}
             </label>
             {imagePreview ? (
               <div className="relative h-40 rounded-lg overflow-hidden border border-primary/40 ring-1 ring-primary/20">
@@ -222,7 +227,7 @@ function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: {
                 {prefill?.imageSrc && (
                   <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-sm px-3 py-1.5 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                    <span className="text-[10px] font-mono text-primary font-bold tracking-widest">AI DETECTION IMAGE</span>
+                    <span className="text-[10px] font-mono text-primary font-bold tracking-widest">YOLO DETECTION IMAGE</span>
                   </div>
                 )}
                 <button type="button" onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full"><X className="w-4 h-4" /></button>
@@ -269,7 +274,7 @@ function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: {
 }
 
 type CitizenTab = 'reports' | 'scan';
-type ScanMode = 'camera' | 'upload' | 'video';
+type ScanMode = 'camera' | 'upload' | 'off';
 
 export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) => void }) {
   const { user, profile, signOut } = useAuth();
@@ -278,6 +283,7 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
   const [scanMode, setScanMode] = useState<ScanMode>('camera');
   const [streamUrl, setStreamUrl] = useState<string | undefined>();
   const [isUploading, setIsUploading] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
   const [allDetections, setAllDetections] = useState<Detection[]>([]);
   const [annotatedImageSrc, setAnnotatedImageSrc] = useState<string | null>(null);
   const [reportPrefill, setReportPrefill] = useState<{ damageType?: DamageType; severity?: SeverityLevel; description?: string; confidence?: number; detections?: Detection[]; imageSrc?: string } | undefined>();
@@ -303,15 +309,6 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
     setScanMode('camera');
     setAllDetections([]);
     setAnnotatedImageSrc(null);
-    setActiveTab('scan');
-  };
-
-  const handleVideoStream = () => {
-    setScanMode('video');
-    setStreamUrl(`${getPythonApiUrl()}/video_feed`);
-    setAllDetections([]);
-    setAnnotatedImageSrc(null);
-    setUploadError(null);
     setActiveTab('scan');
   };
 
@@ -437,9 +434,6 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
               <button onClick={handleStartCamera} className={`flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-all ${scanMode === 'camera' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high'}`}>
                 <Camera className="w-4 h-4" />Camera
               </button>
-              <button onClick={handleVideoStream} className={`flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-all ${scanMode === 'video' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high'}`}>
-                <Video className="w-4 h-4" />Video Feed
-              </button>
               <label className={`flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${scanMode === 'upload' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high'} ${isUploading ? 'opacity-50' : ''}`}>
                 {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
                 Upload
@@ -448,11 +442,33 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
             </div>
 
             {/* Scanner View */}
-            <div className="h-[50vh] min-h-[300px]">
+            <div className="flex flex-col gap-3">
               {scanMode === 'camera' ? (
-                <CameraScanner isActive={activeTab === 'scan' && scanMode === 'camera'} onDetections={handleCameraDetections} onAnnotatedImage={handleAnnotatedImage} />
+                <div className="h-[50vh] min-h-[300px]">
+                  <CameraScanner
+                    isActive={activeTab === 'scan' && scanMode === 'camera'}
+                    onDetections={handleCameraDetections}
+                    onAnnotatedImage={handleAnnotatedImage}
+                    onCameraReadyChange={setIsCameraReady}
+                    onStop={() => {
+                      setScanMode('off');
+                      setIsCameraReady(false);
+                    }}
+                  />
+                </div>
+              ) : scanMode === 'off' ? (
+                <div className="h-[50vh] min-h-[300px] bg-surface-container-lowest rounded-xl border border-outline-variant flex flex-col items-center justify-center p-6 text-center">
+                  <CameraOff className="w-12 h-12 text-outline mb-3" />
+                  <h4 className="font-bold text-on-surface mb-1">Camera Stopped</h4>
+                  <p className="text-xs text-on-surface-variant mb-4 font-mono">Tap below to start live camera scanning</p>
+                  <button onClick={handleStartCamera} className="bg-primary text-on-primary px-6 py-2.5 rounded-lg font-bold text-sm flex items-center gap-2">
+                    <Camera className="w-4 h-4" />Start Live Camera
+                  </button>
+                </div>
               ) : (
-                <VideoFeed url={streamUrl} onStop={scanMode === 'upload' ? handleStartCamera : undefined} />
+                <div className="h-[50vh] min-h-[300px]">
+                  <VideoFeed url={streamUrl} onStop={handleStartCamera} detections={allDetections} />
+                </div>
               )}
             </div>
 
@@ -497,6 +513,30 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
                     </div>
                   ))}
                 </div>
+                {/* AI Crack Type Analysis — shown when AI classifier returns a specific subtype */}
+                {allDetections.some((d) => d.crack_type && d.crack_type !== 'unknown') && (
+                  <div className="mb-3">
+                    <p className="text-[10px] font-mono text-on-surface-variant uppercase tracking-wider mb-2">🔍 Crack Type Analysis</p>
+                    <div className="space-y-2">
+                      {allDetections
+                        .filter((d) => d.crack_type && d.crack_type !== 'unknown')
+                        .slice(-5)
+                        .map((d, i) => (
+                          <div key={i} className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 flex items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2 mb-0.5">
+                                <span className="text-xs font-bold text-primary">{d.crack_label}</span>
+                                <span className="text-[10px] font-mono text-on-surface-variant shrink-0">{Math.round(d.confidence * 100)}% YOLO</span>
+                              </div>
+                              {d.crack_description && (
+                                <p className="text-[10px] text-on-surface-variant leading-relaxed">{d.crack_description}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
                 {/* AI Description */}
                 <div className="bg-surface-muted rounded-lg px-3 py-2 mb-3">
                   <p className="text-[10px] font-mono text-on-surface-variant uppercase tracking-wider mb-1">AI Generated Description</p>
@@ -508,7 +548,7 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
               </div>
             )}
 
-            <p className="text-xs text-on-surface-variant text-center font-mono">Use your camera or upload images/video for AI road damage detection</p>
+            <p className="text-xs text-on-surface-variant text-center font-mono">Use your camera or upload images/video to detect road damage detection using YOLOv11</p>
           </div>
         )}
       </main>

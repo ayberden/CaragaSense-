@@ -1,22 +1,25 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { VideoFeed } from './video-feed';
+import { CameraScanner } from './camera-scanner';
 import { MapView } from './map-view';
-import { Radar, UploadCloud, Loader2, AlertTriangle, TrendingUp, CheckCircle2, Clock } from 'lucide-react';
+import { Camera, Video, UploadCloud, Loader2, AlertTriangle, TrendingUp, CheckCircle2, Clock, CameraOff } from 'lucide-react';
 import { useReportStats } from '@/hooks/use-reports';
+import { getPythonApiUrl } from '@/lib/api-config';
 
 export function DashboardView() {
+  const [scanMode, setScanMode] = useState<'camera' | 'upload' | 'off'>('camera');
   const [streamUrl, setStreamUrl] = useState<string | undefined>();
   const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraReady, setIsCameraReady] = useState(false);
   const { stats, isLoading: statsLoading } = useReportStats();
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
+  const handleStartCamera = () => {
+    setScanMode('camera');
   };
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -25,15 +28,16 @@ export function DashboardView() {
     formData.append('file', file);
 
     try {
-      const apiUrl = `http://${window.location.hostname}:5000/upload`;
+      const apiUrl = `${getPythonApiUrl()}/upload`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         body: formData,
       });
-      
+
       const data = await response.json();
       if (response.ok && data.url) {
         setStreamUrl(data.url);
+        setScanMode('upload');
       } else {
         alert("Upload failed: " + (data.error || "Unknown error"));
       }
@@ -42,14 +46,10 @@ export function DashboardView() {
       alert("Failed to connect to the Python API. Ensure the Python server is running on port 5000.");
     } finally {
       setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      if (event.target) {
+        event.target.value = '';
       }
     }
-  };
-
-  const handleLiveScanClick = () => {
-    setStreamUrl(`http://${window.location.hostname}:5000/video_feed`);
   };
 
   const statCards = [
@@ -107,35 +107,49 @@ export function DashboardView() {
           ))}
         </div>
 
-        <VideoFeed url={streamUrl} />
-        
-        {/* Hidden file input */}
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          onChange={handleFileChange} 
-          accept="image/*,video/mp4,video/x-m4v,video/*" 
-          className="hidden" 
-        />
+        {/* Mode Selector */}
+        <div className="bg-surface-container-lowest rounded-xl p-3 flex gap-2 border border-outline-variant shadow-sm shrink-0">
+          <button
+            onClick={handleStartCamera}
+            className={`flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-all ${scanMode === 'camera' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high'}`}
+          >
+            <Camera className="w-4 h-4" />Camera
+          </button>
+          <label className={`flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${scanMode === 'upload' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high'} ${isUploading ? 'opacity-50' : ''}`}>
+            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+            Upload
+            <input type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" disabled={isUploading} />
+          </label>
+        </div>
 
-        {/* Toggle Controls */}
-        <div className="bg-surface-container-lowest rounded-xl p-4 flex gap-4 shrink-0 border border-outline-variant shadow-sm">
-          <button 
-            onClick={handleLiveScanClick}
-            className="flex-1 bg-primary text-on-primary font-headline text-lg font-bold py-4 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-transform active:scale-[0.98]"
-          >
-            <Radar className="w-6 h-6" />
-            Live Auto-Scan
-          </button>
-          <button 
-            onClick={handleUploadClick}
-            disabled={isUploading}
-            className="flex-1 bg-surface-muted text-on-surface hover:bg-surface-variant font-headline text-lg py-4 rounded-lg flex items-center justify-center gap-2 border border-outline-variant transition-colors disabled:opacity-50"
-          >
-            {isUploading ? <Loader2 className="w-6 h-6 animate-spin" /> : <UploadCloud className="w-6 h-6" />}
-            <span className="hidden sm:inline">{isUploading ? "Uploading..." : "Manual Upload"}</span>
-            <span className="sm:hidden">{isUploading ? "..." : "Upload"}</span>
-          </button>
+        {/* Scanner View */}
+        <div className="flex flex-col gap-3">
+          {scanMode === 'camera' ? (
+            <div className="h-[400px] min-h-[300px]">
+              <CameraScanner
+                isActive={scanMode === 'camera'}
+                onDetections={() => {}}
+                onCameraReadyChange={setIsCameraReady}
+                onStop={() => {
+                  setScanMode('off');
+                  setIsCameraReady(false);
+                }}
+              />
+            </div>
+          ) : scanMode === 'off' ? (
+            <div className="h-[400px] min-h-[300px] bg-surface-container-lowest rounded-xl border border-outline-variant flex flex-col items-center justify-center p-6 text-center">
+              <CameraOff className="w-12 h-12 text-outline mb-3" />
+              <h4 className="font-bold text-on-surface mb-1">Camera Stopped</h4>
+              <p className="text-xs text-on-surface-variant mb-4 font-mono">Tap below to start live camera scanning</p>
+              <button onClick={handleStartCamera} className="bg-primary text-on-primary px-6 py-2.5 rounded-lg font-bold text-sm flex items-center gap-2">
+                <Camera className="w-4 h-4" />Start Live Camera
+              </button>
+            </div>
+          ) : (
+            <div className="h-[400px] min-h-[300px]">
+              <VideoFeed url={streamUrl} onStop={handleStartCamera} />
+            </div>
+          )}
         </div>
       </div>
       {/* Bottom Section: GIS Map (Hidden on mobile inside standard Dashboard tab, rendered in its own tab) */}
@@ -145,3 +159,4 @@ export function DashboardView() {
     </div>
   );
 }
+

@@ -119,9 +119,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           knownReportIds.current.add(newReport.id);
 
           const DAMAGE_LABELS: Record<string, string> = {
-            pothole: 'Pothole', longitudinal_crack: 'Long. Crack',
-            transverse_crack: 'Trans. Crack', rutting: 'Rutting',
-            faded_markings: 'Faded Marks', other: 'Other',
+            pothole: 'Pothole', open_manhole: 'Open Manhole',
+            alligator_crack: 'Alligator Crack', block_crack: 'Block Crack',
+            longitudinal_crack: 'Long. Crack', transverse_crack: 'Trans. Crack',
+            rutting: 'Rutting', other: 'Other Damages',
           };
 
           const isCritical = newReport.severity === 'critical' || newReport.severity === 'high';

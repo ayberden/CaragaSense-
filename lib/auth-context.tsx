@@ -2,8 +2,44 @@
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { DEV_BYPASS } from '@/lib/dev-config';
 import type { User, Session } from '@supabase/supabase-js';
-import type { Profile } from '@/lib/database.types';
+import type { Profile, UserRole } from '@/lib/database.types';
+
+// ── Dev mock profiles (one per role) ─────────────────────────────────────────
+const DEV_MOCK_PROFILES: Record<UserRole, Profile> = {
+  admin: {
+    id: 'dev-admin-001', full_name: 'Local Admin', role: 'admin',
+    avatar_url: null, phone: null,
+    created_at: new Date(Date.now() - 864000000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  engineer: {
+    id: 'dev-engineer-001', full_name: 'Juan dela Cruz', role: 'engineer',
+    avatar_url: null, phone: '+63-912-345-6789',
+    created_at: new Date(Date.now() - 432000000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  citizen: {
+    id: 'dev-citizen-001', full_name: 'Maria Santos', role: 'citizen',
+    avatar_url: null, phone: null,
+    created_at: new Date(Date.now() - 172800000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+};
+
+function makeDevUser(profile: Profile): User {
+  return {
+    id: profile.id,
+    email: `${profile.role}@caragasense.local`,
+    app_metadata: {},
+    user_metadata: { full_name: profile.full_name },
+    aud: 'authenticated',
+    created_at: profile.created_at,
+  } as unknown as User;
+}
+
+const DEV_ROLE_KEY = 'caragasense_dev_role';
 
 interface AuthContextType {
   user: User | null;
@@ -30,56 +66,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
+  // ── DEV BYPASS: read role from localStorage ───────────────────────────────
+  useEffect(() => {
+    if (!DEV_BYPASS) return;
+
+    const savedRole = localStorage.getItem(DEV_ROLE_KEY) as UserRole | null;
+    if (savedRole && DEV_MOCK_PROFILES[savedRole]) {
+      const mockProfile = DEV_MOCK_PROFILES[savedRole];
+      setProfile(mockProfile);
+      setUser(makeDevUser(mockProfile));
+    } else {
+      // Not logged in
+      setProfile(null);
+      setUser(null);
+    }
+    setIsLoading(false);
+  }, []);
+  // ── END DEV BYPASS ────────────────────────────────────────────────────────
+
   const fetchProfile = useCallback(async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     setProfile(data);
   }, [supabase]);
 
   const refreshProfile = useCallback(async () => {
-    if (user) {
-      await fetchProfile(user.id);
-    }
+    if (DEV_BYPASS) return; // No-op in dev mode
+    if (user) await fetchProfile(user.id);
   }, [user, fetchProfile]);
 
+  // ── Production: Supabase auth ─────────────────────────────────────────────
   useEffect(() => {
-    supabase.auth.getSession()
-      .then(({ data: { session: initialSession } }) => {
-        setSession(initialSession);
-        setUser(initialSession?.user ?? null);
-        if (initialSession?.user) {
-          fetchProfile(initialSession.user.id);
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to get Supabase session:', err);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    if (DEV_BYPASS) return;
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-        if (newSession?.user) {
-          await fetchProfile(newSession.user.id);
-        } else {
-          setProfile(null);
-        }
-        setIsLoading(false);
-      }
-    );
+    supabase.auth.getSession()
+      .then(({ data: { session: s } }) => {
+        setSession(s);
+        setUser(s?.user ?? null);
+        if (s?.user) fetchProfile(s.user.id);
+      })
+      .catch((err) => console.error('Supabase session error:', err))
+      .finally(() => setIsLoading(false));
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
+      setSession(s);
+      setUser(s?.user ?? null);
+      if (s?.user) await fetchProfile(s.user.id);
+      else setProfile(null);
+      setIsLoading(false);
+    });
 
     return () => subscription.unsubscribe();
   }, [supabase, fetchProfile]);
+  // ── END PRODUCTION ────────────────────────────────────────────────────────
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    if (DEV_BYPASS) {
+      localStorage.removeItem(DEV_ROLE_KEY);
+    } else {
+      await supabase.auth.signOut();
+    }
     setUser(null);
     setProfile(null);
     setSession(null);
@@ -94,3 +139,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
+
+/**
+ * Dev-only: log in as a specific role (called from the login page).
+ * Saves the role to localStorage so AuthProvider picks it up.
+ */
+export function devLogin(role: UserRole) {
+  localStorage.setItem(DEV_ROLE_KEY, role);
+  window.location.href = '/';
+}

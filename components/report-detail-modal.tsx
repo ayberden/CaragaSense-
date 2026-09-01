@@ -45,11 +45,13 @@ const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string; icon: 
 
 const DAMAGE_LABELS: Record<string, string> = {
   pothole: 'Pothole',
+  open_manhole: 'Open Manhole',
+  alligator_crack: 'Alligator Crack',
+  block_crack: 'Block Crack',
   longitudinal_crack: 'Longitudinal Crack',
   transverse_crack: 'Transverse Crack',
   rutting: 'Rutting',
-  faded_markings: 'Faded Markings',
-  other: 'Other Damage',
+  other: 'Other Damages',
 };
 
 const ALL_STATUSES: ReportStatus[] = ['reported', 'verified', 'scheduled', 'in_progress', 'fixed', 'dismissed'];

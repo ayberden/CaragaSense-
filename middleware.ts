@@ -1,8 +1,17 @@
-import { updateSession } from '@/lib/supabase/middleware';
-import { type NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
+import { DEV_BYPASS } from '@/lib/dev-config';
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+  if (DEV_BYPASS) {
+    // In dev bypass mode: allow ALL routes through — no redirects.
+    // The auth state is managed by localStorage in the client (lib/auth-context.tsx).
+    // page.tsx redirects to /login if not logged in.
+    return NextResponse.next({ request });
+  }
+
+  // ── Production: use Supabase auth ────────────────────────────────────────
+  const { updateSession } = await import('@/lib/supabase/middleware');
+  return updateSession(request);
 }
 
 export const config = {
