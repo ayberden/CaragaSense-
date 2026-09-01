@@ -6,13 +6,12 @@ import { useAuth } from '@/lib/auth-context';
 import { useReports, useCreateReport, useUploadImage } from '@/hooks/use-reports';
 import {
   Camera, MapPin, Clock, CheckCircle2, AlertTriangle,
-  Plus, X, Loader2, Send, Image as ImageIcon, LogOut, Radar, UploadCloud, Video, CameraOff
+  Plus, X, Loader2, Send, Image as ImageIcon, LogOut, UploadCloud, CameraOff, Radar
 } from 'lucide-react';
 import Image from 'next/image';
 import { VideoFeed } from './video-feed';
 import { CameraScanner } from './camera-scanner';
-import type { Detection } from './camera-scanner';
-import { countDetections, generateDescription, getDominantType, inferSeverity, getMaxConfidence, getDamageLabel, mapClassToDamageType } from '@/lib/detection-utils';
+import { countDetections, generateDescription, getDominantType, inferSeverity, getMaxConfidence, getDamageLabel, mapClassToDamageType, type Detection } from '@/lib/detection-utils';
 import { getPythonApiUrl } from '@/lib/api-config';
 import type { Report, DamageType, SeverityLevel, ReportStatus } from '@/lib/database.types';
 

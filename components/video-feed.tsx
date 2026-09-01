@@ -4,9 +4,12 @@ import { useState, useEffect } from 'react';
 import { VideoOff, Wifi } from 'lucide-react';
 import { getPythonApiUrl } from '@/lib/api-config';
 
+import type { Detection } from '@/lib/detection-utils';
+
 interface VideoFeedProps {
   url?: string;
   onStop?: () => void;
+  detections?: Detection[];
 }
 
 export function VideoFeed({ url, onStop }: VideoFeedProps) {

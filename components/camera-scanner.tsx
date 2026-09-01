@@ -3,11 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, CameraOff, Loader2, FlipHorizontal, Square } from 'lucide-react';
 
-export interface Detection {
-  class: string;
-  confidence: number;
-  bbox?: number[];
-}
+import type { Detection } from '@/lib/detection-utils';
 
 interface CameraScannerProps {
   onDetections: (dets: Detection[]) => void;
