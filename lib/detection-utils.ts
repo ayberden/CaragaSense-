@@ -4,6 +4,10 @@ export interface Detection {
   class: string;
   confidence: number;
   bbox?: number[];
+  /** Optional fields populated by the AI crack-type classifier */
+  crack_type?: string;
+  crack_label?: string;
+  crack_description?: string;
 }
 
 const CLASS_MAP: Record<string, DamageType> = {
