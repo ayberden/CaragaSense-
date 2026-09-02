@@ -6,4 +6,4 @@
  *
  * ⚠️ Set to false before deploying to production!
  */
-export const DEV_BYPASS = true;
+export const DEV_BYPASS = false;

@@ -4,42 +4,52 @@ export interface Detection {
   class: string;
   confidence: number;
   bbox?: number[];
-  // Populated by backend AI crack classifier when a crack class is detected
-  crack_type?: 'longitudinal' | 'transverse' | 'alligator' | 'block' | 'edge' | 'unknown';
-  crack_label?: string;
-  crack_description?: string;
 }
 
 const CLASS_MAP: Record<string, DamageType> = {
-  // ── Custom model classes (my_model.pt) ─────────────────────────────────
+  // ── YOLOv11s model classes (my_model.pt) ──────────────────────────────────
   pothole: 'pothole',
+  alligator_crack: 'alligator_crack',
+  block_crack: 'block_crack',
+  edge_crack: 'longitudinal_crack',    // treat edge crack as longitudinal
+  longitudinal_crack: 'longitudinal_crack',
+  transverse_crack: 'transverse_crack',
+  manhole: 'open_manhole',             // covered manhole → open_manhole family
+  open_manhole: 'open_manhole',
+  // ── Alternate spellings / spaces ──────────────────────────────────────────
+  'open manhole': 'open_manhole',
+  'alligator crack': 'alligator_crack',
+  'block crack': 'block_crack',
+  'edge crack': 'longitudinal_crack',
+  'longitudinal crack': 'longitudinal_crack',
+  'transverse crack': 'transverse_crack',
+  // ── Legacy / generic names ─────────────────────────────────────────────────
   cracks: 'transverse_crack',
   crack: 'transverse_crack',
-  open_manhole: 'open_manhole',
-  'open manhole': 'open_manhole',
-  // ── AI crack subtype values (from crack_type field) ───────────────────────
-  longitudinal: 'longitudinal_crack',
-  transverse: 'transverse_crack',
-  alligator: 'alligator_crack',
-  alligator_crack: 'alligator_crack',
-  block: 'block_crack',
-  block_crack: 'block_crack',
-  edge: 'longitudinal_crack',
-  // ── Standard RDD / RDDC dataset codes ───────────────────────────────
+  // ── Standard RDD / RDDC dataset codes ─────────────────────────────────────
   d00: 'longitudinal_crack', d10: 'longitudinal_crack',
-  longitudinal_crack: 'longitudinal_crack', 'longitudinal crack': 'longitudinal_crack',
-  d20: 'transverse_crack', transverse_crack: 'transverse_crack', 'transverse crack': 'transverse_crack',
+  d20: 'transverse_crack',
   d40: 'pothole', rutting: 'rutting',
 };
 
 const RAW_CLASS_DISPLAY: Record<string, string> = {
+  // ── YOLOv11s model classes ─────────────────────────────────────────────────
   pothole: 'Pothole',
-  open_manhole: 'Open Manhole',
-  'open manhole': 'Open Manhole',
   alligator_crack: 'Alligator Crack',
   block_crack: 'Block Crack',
+  edge_crack: 'Edge Crack',
   longitudinal_crack: 'Longitudinal Crack',
   transverse_crack: 'Transverse Crack',
+  manhole: 'Manhole',
+  open_manhole: 'Open Manhole',
+  // ── Alternate spellings ───────────────────────────────────────────────────
+  'open manhole': 'Open Manhole',
+  'alligator crack': 'Alligator Crack',
+  'block crack': 'Block Crack',
+  'edge crack': 'Edge Crack',
+  'longitudinal crack': 'Longitudinal Crack',
+  'transverse crack': 'Transverse Crack',
+  // ── Legacy ────────────────────────────────────────────────────────────────
   cracks: 'Crack',
   crack: 'Crack',
   rutting: 'Rutting',
@@ -57,10 +67,6 @@ const DAMAGE_LABELS: Record<DamageType, string> = {
 };
 
 export function mapClassToDamageType(det: Detection): DamageType {
-  // Check for specialized crack type first
-  if (det.crack_type && det.crack_type !== 'unknown') {
-    return CLASS_MAP[det.crack_type] || 'other';
-  }
   return CLASS_MAP[det.class.toLowerCase().replace(/\s+/g, '_')] || 'other';
 }
 
@@ -68,18 +74,12 @@ export function getDamageLabel(type: DamageType): string {
   return DAMAGE_LABELS[type] || type;
 }
 
-/** Count detections by mapped damage type */
+/** Count detections by mapped damage type (always using trained YOLO classes: Crack, Open Manhole, Pothole) */
 export function countDetections(detections: Detection[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const det of detections) {
-    // Prefer AI crack_label (e.g. "Alligator Crack"), else use raw class display
-    let label: string;
-    if (det.crack_label && det.crack_type && det.crack_type !== 'unknown') {
-      label = det.crack_label;
-    } else {
-      const rawKey = det.class.toLowerCase().replace(/\s+/g, '_');
-      label = RAW_CLASS_DISPLAY[rawKey] ?? RAW_CLASS_DISPLAY[det.class.toLowerCase()] ?? getDamageLabel(mapClassToDamageType(det));
-    }
+    const rawKey = det.class.toLowerCase().replace(/\s+/g, '_');
+    const label = RAW_CLASS_DISPLAY[rawKey] ?? RAW_CLASS_DISPLAY[det.class.toLowerCase()] ?? getDamageLabel(mapClassToDamageType(det));
     counts[label] = (counts[label] || 0) + 1;
   }
   return counts;
@@ -124,29 +124,35 @@ export function generateDescription(detections: Detection[]): string {
   const maxConf = getMaxConfidence(detections);
   const severity = inferSeverity(detections);
 
-  // Build per-detection labels, explicitly naming crack subtypes
+  // Group by trained YOLO classes (Crack, Pothole, Open Manhole)
   const labelMap: Record<string, number> = {};
   for (const det of detections) {
-    let label: string;
-    if (det.crack_label && det.crack_type && det.crack_type !== 'unknown') {
-      // AI successfully classified the crack type (e.g. "Alligator Crack")
-      label = det.crack_label;
-    } else if ((det.class === 'cracks' || det.class === 'crack') && (!det.crack_type || det.crack_type === 'unknown')) {
-      // YOLO detected a crack but AI classification is unavailable
-      label = 'Crack (type unclassified)';
-    } else {
-      const rawKey = det.class.toLowerCase().replace(/\s+/g, '_');
-      label = RAW_CLASS_DISPLAY[rawKey] ?? RAW_CLASS_DISPLAY[det.class.toLowerCase()] ?? getDamageLabel(mapClassToDamageType(det));
-    }
+    const rawKey = det.class.toLowerCase().replace(/\s+/g, '_');
+    const label = RAW_CLASS_DISPLAY[rawKey] ?? RAW_CLASS_DISPLAY[det.class.toLowerCase()] ?? getDamageLabel(mapClassToDamageType(det));
     labelMap[label] = (labelMap[label] || 0) + 1;
   }
 
   const entries = Object.entries(labelMap).sort((a, b) => b[1] - a[1]);
 
-  // Build damage list string
+  // Build damage list string — e.g. "3 open manholes", "1 pothole and 2 alligator cracks"
+  const IRREGULAR_PLURALS: Record<string, string> = {
+    'manhole': 'manholes',
+    'open manhole': 'open manholes',
+    'pothole': 'potholes',
+    'alligator crack': 'alligator cracks',
+    'block crack': 'block cracks',
+    'edge crack': 'edge cracks',
+    'longitudinal crack': 'longitudinal cracks',
+    'transverse crack': 'transverse cracks',
+    'crack': 'cracks',
+    'rutting': 'rutting',
+  };
+
   const parts: string[] = [];
   for (const [label, count] of entries) {
-    parts.push(count === 1 ? `1 ${label.toLowerCase()}` : `${count} ${label.toLowerCase()}s`);
+    const lower = label.toLowerCase();
+    const plural = IRREGULAR_PLURALS[lower] ?? `${lower}s`;
+    parts.push(count === 1 ? `1 ${lower}` : `${count} ${plural}`);
   }
 
   let damageList: string;
@@ -155,16 +161,6 @@ export function generateDescription(detections: Detection[]): string {
   else damageList = `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
 
   let desc = `AI detection identified ${damageList} in this area.`;
-
-  // Append crack subtype description sentence from AI classifier
-  const crackDetails = [...new Set(
-    detections
-      .filter((d) => d.crack_description && d.crack_type && d.crack_type !== 'unknown')
-      .map((d) => d.crack_description as string)
-  )];
-  if (crackDetails.length > 0) {
-    desc += ` ${crackDetails[0]}`;
-  }
 
   // Add severity context
   const severityText: Record<SeverityLevel, string> = {

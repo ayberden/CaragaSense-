@@ -10,10 +10,7 @@ Endpoints:
 """
 
 import base64
-import io
-import json
 import os
-import re
 import time
 import threading
 import uuid
@@ -21,7 +18,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import requests as http_requests
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
 from ultralytics import YOLO
@@ -36,26 +32,41 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 # ── Model ─────────────────────────────────────────────────────────────────────
-# Primary: user's custom road-damage model
-MODEL_PATH = Path(r"C:\Users\IVERDEEN.DESKTOP-SN548D5\Desktop\yolo\my_model\my_model.pt")
-FALLBACK_MODEL = "yolo11n.pt"   # Generic fallback if custom model not found
+# Resolution order:
+#   1. Any .pt file inside api/models/  (drop your model here)
+#   2. Legacy absolute path (kept for backward compatibility)
+#   3. Generic YOLOv11n fallback
+MODELS_DIR = BASE_DIR / "models"
+LEGACY_MODEL_PATH = Path(r"C:\Users\IVERDEEN.DESKTOP-SN548D5\Desktop\yolo\my_model\my_model.pt")
+FALLBACK_MODEL = "yolo11n.pt"
 
 _model = None
 _model_lock = threading.Lock()
 
 
+def _resolve_model_path() -> Path | None:
+    """Return the first .pt file found in api/models/, or the legacy path."""
+    if MODELS_DIR.exists():
+        pt_files = sorted(MODELS_DIR.glob("*.pt"))
+        if pt_files:
+            return pt_files[0]  # Use the first model found alphabetically
+    if LEGACY_MODEL_PATH.exists():
+        return LEGACY_MODEL_PATH
+    return None
+
+
 def load_model():
-    """Load YOLO model — custom model if available, else generic fallback."""
+    """Load YOLO model — api/models/ first, legacy path second, fallback third."""
     global _model
     with _model_lock:
         if _model is not None:
             return _model
-        if MODEL_PATH.exists():
-            print(f"[CaragaSense] Loading custom model: {MODEL_PATH}")
-            _model = YOLO(str(MODEL_PATH))
+        resolved = _resolve_model_path()
+        if resolved:
+            print(f"[CaragaSense] Loading model: {resolved}")
+            _model = YOLO(str(resolved))
         else:
-            print(f"[CaragaSense] No custom model found at {MODEL_PATH}.")
-            print(f"[CaragaSense] Loading fallback model: {FALLBACK_MODEL}")
+            print(f"[CaragaSense] No custom model found. Loading fallback: {FALLBACK_MODEL}")
             _model = YOLO(FALLBACK_MODEL)
         print(f"[CaragaSense] Model loaded. Classes: {_model.names}")
         return _model
@@ -75,102 +86,9 @@ CLASS_COLORS = [
     (172, 176, 184),
 ]
 
-# ── OpenRouter AI crack classifier ─────────────────────────────────────────────
-OPENROUTER_API_KEY    = os.getenv('OPENROUTER_API_KEY', '')
-# Primary vision model; fallback if primary is rate-limited
-OPENROUTER_MODELS = [
-    'meta-llama/llama-3.2-11b-vision-instruct:free',  # primary
-    'google/gemma-4-31b-it:free',                      # fallback
-]
-
-# Classes from your model that represent cracks and should trigger AI subtype analysis
-CRACK_CLASSES = {'crack', 'cracks', 'd00', 'd10', 'd20',
-                 'longitudinal_crack', 'transverse_crack', 'alligator_crack'}
 
 
-def classify_crack_type_ai(crop_bgr: np.ndarray) -> dict:
-    """
-    Send a cropped crack image to OpenRouter (Gemma 4 Vision) to identify
-    the specific crack subtype.
-    Returns a dict with crack_type, crack_label, crack_description.
-    Falls back gracefully if the API is unavailable.
-    """
-    _default = {
-        'crack_type': 'unknown',
-        'crack_label': 'Crack',
-        'crack_description': 'Crack detected on the road surface.',
-    }
 
-    if crop_bgr is None or crop_bgr.size == 0:
-        return _default
-
-    # Encode crop as a base64 JPEG data URL
-    _, buf = cv2.imencode('.jpg', crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    b64     = base64.b64encode(buf).decode('utf-8')
-    data_url = f'data:image/jpeg;base64,{b64}'
-
-    prompt = (
-        'You are a road surface damage analyst. Look at this cropped road image '
-        'and classify the crack type.\n\n'
-        'Choose EXACTLY ONE from:\n'
-        '- longitudinal : crack runs parallel to the road direction\n'
-        '- transverse   : crack runs perpendicular / across the road\n'
-        '- alligator    : interconnected network of cracks (fatigue cracking)\n'
-        '- block        : large rectangular block-pattern cracks\n'
-        '- edge         : crack along the road edge or shoulder\n\n'
-        'Respond with ONLY valid JSON — no markdown, no extra text:\n'
-        '{"crack_type": "alligator", "crack_label": "Alligator Crack", '
-        '"crack_description": "One-sentence description of the crack."}'
-    )
-
-    try:
-        for model in OPENROUTER_MODELS:
-            resp = http_requests.post(
-                url='https://openrouter.ai/api/v1/chat/completions',
-                headers={
-                    'Authorization': f'Bearer {OPENROUTER_API_KEY}',
-                    'Content-Type': 'application/json',
-                },
-                json={
-                    'model': model,
-                    'messages': [
-                        {
-                            'role': 'user',
-                            'content': [
-                                {'type': 'image_url', 'image_url': {'url': data_url}},
-                                {'type': 'text', 'text': prompt},
-                            ],
-                        }
-                    ],
-                    'max_tokens': 150,
-                },
-                timeout=20,
-            )
-
-            if resp.status_code == 429:
-                print(f'[CaragaSense] {model} rate-limited (429), trying next model...')
-                continue
-
-            if not resp.ok:
-                print(f'[CaragaSense] {model} error {resp.status_code}: {resp.text[:200]}')
-                continue
-
-            data    = resp.json()
-            content = data['choices'][0]['message']['content'].strip()
-            print(f'[CaragaSense] Crack AI ({model}) response: {content}')
-
-            # Extract the first JSON object from the response
-            match = re.search(r'\{[^{}]+\}', content, re.DOTALL)
-            if match:
-                result = json.loads(match.group())
-                if 'crack_type' in result and 'crack_label' in result:
-                    return result
-            break  # got a valid response, stop trying models
-
-    except Exception as exc:
-        print(f'[CaragaSense] AI crack classification failed: {exc}')
-
-    return _default
 
 CONF_THRESHOLD = 0.5   # matches yolo_detect.py default
 
@@ -181,17 +99,9 @@ def get_color(class_id: int):
 
 # ── Detection helpers ─────────────────────────────────────────────────────────
 
-def run_detection(frame_bgr: np.ndarray, conf_threshold: float = CONF_THRESHOLD,
-                  classify_cracks: bool = False):
+def run_detection(frame_bgr: np.ndarray, conf_threshold: float = CONF_THRESHOLD):
     """
     Run YOLO inference on a BGR numpy frame.
-    Uses the same drawing style as yolo_detect.py.
-
-    Args:
-      classify_cracks: If True, detected cracks are sent to the OpenRouter AI
-                       API for subtype classification. Keep False for live video
-                       feeds to avoid latency. Set True for image uploads.
-
     Returns (detections_list, annotated_bgr_frame).
     """
     model = load_model()
@@ -219,25 +129,14 @@ def run_detection(frame_bgr: np.ndarray, conf_threshold: float = CONF_THRESHOLD,
             'bbox':       [int(xmin), int(ymin), int(xmax - xmin), int(ymax - ymin)],
         }
 
-        # ── AI crack subtype classification (only on uploads, not live video) ──
-        if classify_cracks and cls_name.lower() in CRACK_CLASSES:
-            cx1  = max(0, xmin)
-            cy1  = max(0, ymin)
-            cx2  = min(frame_bgr.shape[1], xmax)
-            cy2  = min(frame_bgr.shape[0], ymax)
-            crop = frame_bgr[cy1:cy2, cx1:cx2]
-            crack_info = classify_crack_type_ai(crop)
-            detection.update(crack_info)
-            print(f'[CaragaSense] Crack classified as: {crack_info["crack_label"]}')
-
         detections.append(detection)
 
-        # Draw bounding box — show crack subtype label when available
+        # Draw bounding box — always use trained YOLO model class name on image overlay
         color = get_color(cls_id)
         cv2.rectangle(annotated, (xmin, ymin), (xmax, ymax), color, 2)
 
-        display_name = detection.get('crack_label', cls_name)
-        label = f'{display_name}: {int(conf * 100)}%'
+        yolo_display_name = 'Crack' if cls_name.lower() in ('crack', 'cracks') else cls_name.replace('_', ' ').title()
+        label = f'{yolo_display_name}: {int(conf * 100)}%'
         labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         label_ymin = max(ymin, labelSize[1] + 10)
         cv2.rectangle(annotated,
@@ -259,13 +158,20 @@ def bgr_to_base64_jpeg(frame_bgr: np.ndarray, quality: int = 80) -> str:
 
 def base64_to_bgr(data_url: str) -> np.ndarray:
     """Decode a base64 data URL (or raw base64) to a BGR numpy array."""
-    if "," in data_url:
-        _, encoded = data_url.split(",", 1)
-    else:
-        encoded = data_url
-    raw = base64.b64decode(encoded)
-    arr = np.frombuffer(raw, dtype=np.uint8)
-    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    try:
+        if "," in data_url:
+            _, encoded = data_url.split(",", 1)
+        else:
+            encoded = data_url
+        raw = base64.b64decode(encoded)
+        if not raw:
+            return None
+        arr = np.frombuffer(raw, dtype=np.uint8)
+        if arr is None or len(arr) == 0:
+            return None
+        return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    except Exception:
+        return None
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -273,7 +179,8 @@ def base64_to_bgr(data_url: str) -> np.ndarray:
 @app.route("/health", methods=["GET"])
 def health():
     model = load_model()
-    return jsonify({"status": "ok", "model": str(MODEL_PATH if MODEL_PATH.exists() else FALLBACK_MODEL), "classes": model.names})
+    resolved = _resolve_model_path()
+    return jsonify({"status": "ok", "model": str(resolved or FALLBACK_MODEL), "classes": model.names})
 
 
 @app.route("/detect", methods=["POST"])
@@ -290,7 +197,7 @@ def detect():
     if frame is None:
         return jsonify({"error": "Could not decode image"}), 400
 
-    detections, annotated = run_detection(frame, classify_cracks=True)
+    detections, annotated = run_detection(frame)
     annotated_b64 = bgr_to_base64_jpeg(annotated)
 
     return jsonify({"detections": detections, "annotated_image": annotated_b64})
@@ -330,7 +237,7 @@ def upload():
         if frame is None:
             return jsonify({"error": "Could not read image"}), 400
 
-        detections, annotated = run_detection(frame, classify_cracks=True)
+        detections, annotated = run_detection(frame)
 
         # Save annotated image
         annotated_filename = f"annotated_{filename}"
@@ -466,11 +373,12 @@ def serve_upload(filename):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    resolved = _resolve_model_path()
     print("=" * 60)
     print("  CaragaSense Detection API")
     print("  Starting on http://0.0.0.0:5000")
-    print(f"  Model: {MODEL_PATH}")
-    print(f"  Model exists: {MODEL_PATH.exists()}")
+    print(f"  Models dir:  {MODELS_DIR}")
+    print(f"  Model found: {resolved or 'None — will use fallback'}")
     print("=" * 60)
     # Pre-load model on startup
     load_model()
