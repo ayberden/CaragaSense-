@@ -27,10 +27,10 @@ export default function LocationPicker({ coords, onCoordsChange }: LocationPicke
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OSM &copy; CARTO',
-      subdomains: 'abcd',
-      maxZoom: 20,
+    // CARTO basemaps now require an API key, so use OpenStreetMap (no key needed).
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
     }).addTo(map);
 
     // Place initial marker if coords exist

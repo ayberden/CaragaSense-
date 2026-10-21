@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { DEV_BYPASS } from '@/lib/dev-config';
 import {
   AlertTriangle, CheckCircle2, Info, X, Bell,
 } from 'lucide-react';
@@ -89,6 +90,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   // Real-time listener for new reports — fires toast notifications
   useEffect(() => {
+    // Skip all Supabase calls in dev mode
+    if (DEV_BYPASS) return;
+
     const supabase = createClient();
 
     // First load existing report IDs so we don't toast for old ones
@@ -119,8 +123,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           knownReportIds.current.add(newReport.id);
 
           const DAMAGE_LABELS: Record<string, string> = {
-            pothole: 'Pothole', open_manhole: 'Open Manhole',
-            alligator_crack: 'Alligator Crack', block_crack: 'Block Crack',
+            pothole: 'Pothole', open_manhole: 'Open Manhole', manhole: 'Manhole',
+            alligator_crack: 'Alligator Crack', block_crack: 'Block Crack', edge_crack: 'Edge Crack',
             longitudinal_crack: 'Long. Crack', transverse_crack: 'Trans. Crack',
             rutting: 'Rutting', other: 'Other Damages',
           };

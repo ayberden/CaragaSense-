@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { DEV_BYPASS } from '@/lib/dev-config';
 import { devLogin } from '@/lib/auth-context';
+import Image from 'next/image';
 import { Shield, Eye, EyeOff, ArrowRight, AlertCircle, Wrench, Users, ShieldCheck } from 'lucide-react';
 import type { UserRole } from '@/lib/database.types';
 
@@ -220,8 +221,14 @@ export default function LoginPage() {
 
       {/* Logo & Branding */}
       <div className="relative z-10 flex flex-col items-center mb-8">
-        <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-primary/20">
-          <Shield className="w-9 h-9 text-white" />
+        <div className="relative w-24 h-24 mb-3 drop-shadow-lg transition-transform hover:scale-105 duration-300">
+          <Image
+            src="/logo.png"
+            alt="CaragaSense AI Logo"
+            fill
+            className="object-contain"
+            priority
+          />
         </div>
         <h1 className="font-headline text-3xl font-bold text-on-surface tracking-tight">
           CaragaSense<span className="text-primary">AI</span>

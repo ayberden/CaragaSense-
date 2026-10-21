@@ -36,15 +36,17 @@ const SEVERITY_STYLES: Record<SeverityLevel, { badge: string; dot: string; ring:
 const DAMAGE_LABELS: Record<string, string> = {
   pothole: 'Pothole',
   open_manhole: 'Open Manhole',
+  manhole: 'Manhole',
   alligator_crack: 'Alligator Crack',
   block_crack: 'Block Crack',
+  edge_crack: 'Edge Crack',
   longitudinal_crack: 'Longitudinal Crack',
   transverse_crack: 'Transverse Crack',
   rutting: 'Rutting',
   other: 'Other Damages',
 };
 
-type AlertFilter = 'all' | 'critical' | 'new' | 'stale';
+type AlertFilter = 'all' | 'critical' | 'new' | 'stale' | 'resolved';
 
 /* ── Helpers ────────────────────────────────────── */
 function timeAgo(dateStr: string): string {
@@ -66,14 +68,19 @@ function isStale(dateStr: string): boolean {
 /* ── Alert Item Component ───────────────────────── */
 function AlertItem({ report, onViewDetails }: { report: Report; onViewDetails: (r: Report) => void }) {
   const styles = SEVERITY_STYLES[report.severity];
-  const stale = isStale(report.created_at);
-  const isCritical = report.severity === 'critical' || report.severity === 'high';
+  const isResolved = report.status === 'fixed' || report.status === 'dismissed';
+  const stale = !isResolved && isStale(report.created_at);
+  const isCritical = !isResolved && (report.severity === 'critical' || report.severity === 'high');
   const img = report.image_url || 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=200&q=80';
 
   return (
     <div
       className={`bg-surface-container-lowest border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer group ${
-        isCritical ? `border-severity-high/30 ring-1 ${styles.ring}` : 'border-outline-variant'
+        isResolved
+          ? 'border-severity-low/30 hover:border-severity-low'
+          : isCritical
+          ? `border-severity-high/30 ring-1 ${styles.ring}`
+          : 'border-outline-variant'
       }`}
       onClick={() => onViewDetails(report)}
     >
@@ -88,8 +95,8 @@ function AlertItem({ report, onViewDetails }: { report: Report; onViewDetails: (
             unoptimized
             referrerPolicy="no-referrer"
           />
-          {/* Severity strip */}
-          <div className={`absolute bottom-0 left-0 right-0 h-1 ${styles.dot}`} />
+          {/* Severity / Status strip */}
+          <div className={`absolute bottom-0 left-0 right-0 h-1 ${isResolved ? 'bg-severity-low' : styles.dot}`} />
         </div>
 
         {/* Content */}
@@ -99,6 +106,9 @@ function AlertItem({ report, onViewDetails }: { report: Report; onViewDetails: (
               <div className="flex items-center gap-2 mb-1">
                 {isCritical && (
                   <Flame className="w-3.5 h-3.5 text-severity-high shrink-0 animate-pulse" />
+                )}
+                {isResolved && (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-severity-low shrink-0" />
                 )}
                 <h4 className="text-sm font-bold text-on-surface truncate">
                   {DAMAGE_LABELS[report.damage_type] || report.damage_type}
@@ -113,9 +123,11 @@ function AlertItem({ report, onViewDetails }: { report: Report; onViewDetails: (
             </div>
             <div className="flex flex-col items-end gap-1 shrink-0">
               <span
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${styles.badge}`}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                  isResolved ? 'bg-severity-low/10 text-severity-low' : styles.badge
+                }`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${styles.dot}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${isResolved ? 'bg-severity-low' : styles.dot}`} />
                 {report.severity.charAt(0).toUpperCase() + report.severity.slice(1)}
               </span>
               <span className="text-[10px] font-mono text-outline">{timeAgo(report.created_at)}</span>
@@ -124,20 +136,29 @@ function AlertItem({ report, onViewDetails }: { report: Report; onViewDetails: (
 
           {/* Tags */}
           <div className="flex items-center gap-2 mt-1">
-            {stale && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-severity-medium bg-severity-medium/10 px-1.5 py-0.5 rounded">
-                <Clock className="w-3 h-3" />
-                STALE
+            {isResolved ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-severity-low bg-severity-low/10 px-1.5 py-0.5 rounded uppercase">
+                <CheckCircle2 className="w-3 h-3" />
+                Resolved
               </span>
+            ) : (
+              <>
+                {stale && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-severity-medium bg-severity-medium/10 px-1.5 py-0.5 rounded">
+                    <Clock className="w-3 h-3" />
+                    STALE
+                  </span>
+                )}
+                <span className="text-[10px] font-mono text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded uppercase">
+                  {report.status.replace('_', ' ')}
+                </span>
+              </>
             )}
             {report.confidence !== null && (
               <span className="text-[10px] font-mono text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded">
                 AI: {Math.round(report.confidence * 100)}%
               </span>
             )}
-            <span className="text-[10px] font-mono text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded uppercase">
-              {report.status.replace('_', ' ')}
-            </span>
           </div>
         </div>
 
@@ -157,8 +178,8 @@ export function AlertsView({ onViewReport }: { onViewReport?: (report: Report) =
   const { reports, isLoading, error } = useReports();
   const [filter, setFilter] = useState<AlertFilter>('all');
 
-  // Compute alerts: only non-resolved reports, sorted by priority
-  const alerts = useMemo(() => {
+  // Compute active alerts: only non-resolved reports, sorted by priority
+  const activeAlerts = useMemo(() => {
     const active = reports.filter((r) => !['fixed', 'dismissed'].includes(r.status));
 
     // Sort: critical first, then high, then by newest
@@ -172,22 +193,32 @@ export function AlertsView({ onViewReport }: { onViewReport?: (report: Report) =
     return active;
   }, [reports]);
 
+  // Compute resolved reports, sorted by most recent
+  const resolvedAlerts = useMemo(() => {
+    const resolved = reports.filter((r) => ['fixed', 'dismissed'].includes(r.status));
+    resolved.sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());
+    return resolved;
+  }, [reports]);
+
   const filteredAlerts = useMemo(() => {
     switch (filter) {
       case 'critical':
-        return alerts.filter((r) => r.severity === 'critical' || r.severity === 'high');
+        return activeAlerts.filter((r) => r.severity === 'critical' || r.severity === 'high');
       case 'new':
-        return alerts.filter((r) => r.status === 'reported');
+        return activeAlerts.filter((r) => r.status === 'reported');
       case 'stale':
-        return alerts.filter((r) => isStale(r.created_at));
+        return activeAlerts.filter((r) => isStale(r.created_at));
+      case 'resolved':
+        return resolvedAlerts;
       default:
-        return alerts;
+        return activeAlerts;
     }
-  }, [alerts, filter]);
+  }, [activeAlerts, resolvedAlerts, filter]);
 
-  const criticalCount = alerts.filter((r) => r.severity === 'critical' || r.severity === 'high').length;
-  const newCount = alerts.filter((r) => r.status === 'reported').length;
-  const staleCount = alerts.filter((r) => isStale(r.created_at)).length;
+  const criticalCount = activeAlerts.filter((r) => r.severity === 'critical' || r.severity === 'high').length;
+  const newCount = activeAlerts.filter((r) => r.status === 'reported').length;
+  const staleCount = activeAlerts.filter((r) => isStale(r.created_at)).length;
+  const resolvedCount = resolvedAlerts.length;
 
   const handleViewDetails = (report: Report) => {
     onViewReport?.(report);
@@ -202,11 +233,47 @@ export function AlertsView({ onViewReport }: { onViewReport?: (report: Report) =
     );
   }
 
-  const filters: { id: AlertFilter; label: string; count: number; icon: React.ElementType; color: string }[] = [
-    { id: 'all', label: 'All Active', count: alerts.length, icon: Bell, color: 'text-primary' },
-    { id: 'critical', label: 'Critical', count: criticalCount, icon: AlertTriangle, color: 'text-severity-high' },
-    { id: 'new', label: 'New', count: newCount, icon: Info, color: 'text-primary' },
-    { id: 'stale', label: 'Stale (48h+)', count: staleCount, icon: Clock, color: 'text-severity-medium' },
+  const filters: { id: AlertFilter; label: string; count: number; icon: React.ElementType; color: string; activeClasses: string }[] = [
+    {
+      id: 'all',
+      label: 'All Active',
+      count: activeAlerts.length,
+      icon: Bell,
+      color: 'text-primary',
+      activeClasses: 'border-primary bg-primary/5 ring-1 ring-primary/20',
+    },
+    {
+      id: 'critical',
+      label: 'Critical',
+      count: criticalCount,
+      icon: AlertTriangle,
+      color: 'text-severity-high',
+      activeClasses: 'border-severity-high bg-severity-high/5 ring-1 ring-severity-high/20',
+    },
+    {
+      id: 'new',
+      label: 'New',
+      count: newCount,
+      icon: Info,
+      color: 'text-primary',
+      activeClasses: 'border-primary bg-primary/5 ring-1 ring-primary/20',
+    },
+    {
+      id: 'stale',
+      label: 'Stale (48h+)',
+      count: staleCount,
+      icon: Clock,
+      color: 'text-severity-medium',
+      activeClasses: 'border-severity-medium bg-severity-medium/5 ring-1 ring-severity-medium/20',
+    },
+    {
+      id: 'resolved',
+      label: 'Resolved',
+      count: resolvedCount,
+      icon: CheckCircle2,
+      color: 'text-severity-low',
+      activeClasses: 'border-severity-low bg-severity-low/5 ring-1 ring-severity-low/20',
+    },
   ];
 
   return (
@@ -214,7 +281,7 @@ export function AlertsView({ onViewReport }: { onViewReport?: (report: Report) =
       <header className="mb-6">
         <h1 className="font-headline text-3xl font-bold text-on-surface">Alerts & Notifications</h1>
         <p className="font-sans text-lg text-on-surface-variant">
-          Review critical road damage reports and system updates.
+          Review critical road damage reports, stale issues, and resolved fixes.
         </p>
       </header>
 
@@ -225,18 +292,18 @@ export function AlertsView({ onViewReport }: { onViewReport?: (report: Report) =
       )}
 
       {/* Summary Strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         {filters.map((f) => (
           <button
             key={f.id}
             onClick={() => setFilter(f.id)}
             className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
               filter === f.id
-                ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                ? f.activeClasses
                 : 'border-outline-variant bg-surface-container-lowest hover:bg-surface-container-high'
             }`}
           >
-            <f.icon className={`w-5 h-5 shrink-0 ${filter === f.id ? 'text-primary' : f.color}`} />
+            <f.icon className={`w-5 h-5 shrink-0 ${filter === f.id ? f.color : f.color}`} />
             <div>
               <p className="font-mono text-lg font-bold text-on-surface leading-tight">{f.count}</p>
               <p className="text-[10px] font-mono text-on-surface-variant uppercase tracking-wider">{f.label}</p>
@@ -250,11 +317,17 @@ export function AlertsView({ onViewReport }: { onViewReport?: (report: Report) =
         <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-8 shadow-sm flex-1 flex flex-col items-center justify-center text-center">
           <CheckCircle2 className="w-12 h-12 text-severity-low mb-3" />
           <h2 className="text-xl font-bold mb-2">
-            {filter === 'all' ? 'No active alerts' : `No ${filter} alerts`}
+            {filter === 'all'
+              ? 'No active alerts'
+              : filter === 'resolved'
+              ? 'No resolved reports'
+              : `No ${filter} alerts`}
           </h2>
           <p className="text-on-surface-variant">
             {filter === 'all'
               ? 'All road damage reports have been processed. System is running optimally.'
+              : filter === 'resolved'
+              ? 'Road damage reports marked as fixed will appear here.'
               : 'Try switching to a different filter to see alerts.'}
           </p>
         </div>
@@ -262,7 +335,8 @@ export function AlertsView({ onViewReport }: { onViewReport?: (report: Report) =
         <div className="flex-1 overflow-y-auto space-y-3 pb-16 md:pb-0">
           <div className="flex justify-between items-center mb-2">
             <p className="text-sm font-mono text-on-surface-variant">
-              Showing <span className="font-bold text-on-surface">{filteredAlerts.length}</span> alerts
+              Showing <span className="font-bold text-on-surface">{filteredAlerts.length}</span>{' '}
+              {filter === 'resolved' ? 'resolved reports' : 'alerts'}
             </p>
           </div>
           {filteredAlerts.map((report) => (

@@ -1,7 +1,15 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ['10.10.12.185', 'localhost', '127.0.0.1'],
+  allowedDevOrigins: [
+    'localhost',
+    '127.0.0.1',
+    '10.10.12.185',
+    '192.168.68.105',
+    // Private LAN ranges, so this keeps working when the machine's IP changes
+    '192.168.*.*',
+    '10.*.*.*',
+  ],
   reactStrictMode: true,
   eslint: {
     ignoreDuringBuilds: true,

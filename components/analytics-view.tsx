@@ -32,7 +32,8 @@ const STATUS_COLORS = {
 };
 
 const DAMAGE_COLORS = [
-  '#003d9b', '#0052cc', '#2684FF', '#4C9AFF', '#B3D4FF', '#79E2F2',
+  '#003d9b', '#0052cc', '#0065FF', '#2684FF', '#009688', '#36B37E',
+  '#FFAB00', '#FF8B00', '#6554C0', '#4C9AFF', '#79E2F2',
 ];
 
 /* ── Helpers ────────────────────────────────────── */
@@ -59,22 +60,45 @@ function groupBySeverity(reports: Report[]) {
 }
 
 function groupByDamageType(reports: Report[]) {
+  // All 8 official classes detected by YOLOv11 (my_model.pt)
+  const YOLO_CLASSES = [
+    'Pothole',
+    'Alligator Crack',
+    'Block Crack',
+    'Edge Crack',
+    'Longitudinal Crack',
+    'Transverse Crack',
+    'Open Manhole',
+    'Manhole',
+  ];
+
   const LABELS: Record<string, string> = {
     pothole: 'Pothole',
-    longitudinal_crack: 'Long. Crack',
-    transverse_crack: 'Trans. Crack',
+    alligator_crack: 'Alligator Crack',
+    block_crack: 'Block Crack',
+    edge_crack: 'Edge Crack',
+    longitudinal_crack: 'Longitudinal Crack',
+    transverse_crack: 'Transverse Crack',
+    open_manhole: 'Open Manhole',
+    manhole: 'Manhole',
     rutting: 'Rutting',
-    faded_markings: 'Faded Marks',
-    other: 'Other',
+    faded_markings: 'Faded Markings',
+    other: 'Other Damages',
   };
+
+  // Pre-populate all 8 YOLO classes so they are always accounted for in the breakdown
   const map = new Map<string, number>();
+  YOLO_CLASSES.forEach((cls) => map.set(cls, 0));
+
+  // Count reports by damage type
   reports.forEach((r) => {
-    const label = LABELS[r.damage_type] || r.damage_type;
+    const label = LABELS[r.damage_type] || r.damage_type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     map.set(label, (map.get(label) || 0) + 1);
   });
+
   return Array.from(map.entries())
     .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 function groupByStatus(reports: Report[]) {
@@ -317,21 +341,25 @@ export function AnalyticsView() {
         {/* Charts Row 2: Damage Type + Status Pipeline */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Damage Type — Bar Chart */}
-          <ChartCard title="Damage Type Breakdown" subtitle="Number of reports per damage category">
+          <ChartCard title="Damage Type Breakdown" subtitle="YOLOv11 detection classes & incident counts">
             {damageData.length === 0 ? (
-              <div className="h-[280px] flex items-center justify-center text-on-surface-variant text-sm font-mono">
+              <div className="h-[360px] flex items-center justify-center text-on-surface-variant text-sm font-mono">
                 No data yet
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={damageData} layout="vertical" barCategoryGap="20%">
+              <ResponsiveContainer width="100%" height={360}>
+                <BarChart data={damageData} layout="vertical" margin={{ top: 5, right: 24, left: 10, bottom: 5 }} barCategoryGap="15%">
                   <CartesianGrid strokeDasharray="3 3" stroke="#c3c6d6" strokeOpacity={0.4} horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 10, fontFamily: 'monospace', fill: '#44464f' }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fontFamily: 'Inter, sans-serif', fill: '#44464f' }} width={90} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fontFamily: 'Inter, sans-serif', fill: '#44464f' }} width={130} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={24}>
-                    {damageData.map((_entry, index) => (
-                      <Cell key={`cell-${index}`} fill={DAMAGE_COLORS[index % DAMAGE_COLORS.length]} />
+                  <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={18}>
+                    {damageData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={entry.count > 0 ? DAMAGE_COLORS[index % DAMAGE_COLORS.length] : '#c3c6d6'}
+                        fillOpacity={entry.count > 0 ? 1 : 0.45}
+                      />
                     ))}
                   </Bar>
                 </BarChart>
@@ -342,11 +370,11 @@ export function AnalyticsView() {
           {/* Status Pipeline — Radial Bar */}
           <ChartCard title="Status Pipeline" subtitle="Reports by current lifecycle stage">
             {statusData.every((d) => d.value === 0) ? (
-              <div className="h-[280px] flex items-center justify-center text-on-surface-variant text-sm font-mono">
+              <div className="h-[360px] flex items-center justify-center text-on-surface-variant text-sm font-mono">
                 No data yet
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={280}>
+              <ResponsiveContainer width="100%" height={360}>
                 <RadialBarChart
                   cx="50%"
                   cy="50%"

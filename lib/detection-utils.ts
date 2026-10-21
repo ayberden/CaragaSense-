@@ -15,16 +15,16 @@ const CLASS_MAP: Record<string, DamageType> = {
   pothole: 'pothole',
   alligator_crack: 'alligator_crack',
   block_crack: 'block_crack',
-  edge_crack: 'longitudinal_crack',    // treat edge crack as longitudinal
+  edge_crack: 'edge_crack',
   longitudinal_crack: 'longitudinal_crack',
   transverse_crack: 'transverse_crack',
-  manhole: 'open_manhole',             // covered manhole → open_manhole family
+  manhole: 'manhole',
   open_manhole: 'open_manhole',
   // ── Alternate spellings / spaces ──────────────────────────────────────────
   'open manhole': 'open_manhole',
   'alligator crack': 'alligator_crack',
   'block crack': 'block_crack',
-  'edge crack': 'longitudinal_crack',
+  'edge crack': 'edge_crack',
   'longitudinal crack': 'longitudinal_crack',
   'transverse crack': 'transverse_crack',
   // ── Legacy / generic names ─────────────────────────────────────────────────

@@ -23,8 +23,10 @@ const STATUS_ICONS: Record<string, string> = {
 const DAMAGE_LABELS: Record<string, string> = {
   pothole: 'Pothole',
   open_manhole: 'Open Manhole',
+  manhole: 'Manhole',
   alligator_crack: 'Alligator Crack',
   block_crack: 'Block Crack',
+  edge_crack: 'Edge Crack',
   longitudinal_crack: 'Long. Crack',
   transverse_crack: 'Trans. Crack',
   rutting: 'Rutting',
@@ -77,10 +79,10 @@ export default function MapContent() {
 
     const map = L.map(mapRef.current).setView([8.9475, 125.5406], 13);
 
-    const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      subdomains: 'abcd',
-      maxZoom: 20,
+    // CARTO basemaps now require an API key, so use OpenStreetMap (no key needed).
+    const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
     });
 
     const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -93,10 +95,10 @@ export default function MapContent() {
       maxZoom: 19,
     });
 
-    carto.addTo(map);
+    osm.addTo(map);
 
     L.control.layers({
-      "Modern Street": carto,
+      "Modern Street": osm,
       "Satellite": satellite,
       "Classic Street": streets
     }, undefined, { position: 'bottomright' }).addTo(map);

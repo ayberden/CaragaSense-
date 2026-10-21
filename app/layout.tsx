@@ -18,6 +18,11 @@ export const metadata: Metadata = {
   title: 'CaragaSense AI',
   description: 'AI-powered Road Damage Detection System',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

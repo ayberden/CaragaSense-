@@ -15,8 +15,10 @@ const SEVERITY_STYLES: Record<SeverityLevel, { badge: string; dot: string }> = {
 const DAMAGE_LABELS: Record<string, string> = {
   pothole: 'Pothole',
   open_manhole: 'Open Manhole',
+  manhole: 'Manhole',
   alligator_crack: 'Alligator Crack',
   block_crack: 'Block Crack',
+  edge_crack: 'Edge Crack',
   longitudinal_crack: 'Longitudinal Crack',
   transverse_crack: 'Transverse Crack',
   rutting: 'Rutting',

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { CloudSun, User, LogOut, ChevronDown } from 'lucide-react';
 import { NetworkStatus } from './network-status';
 import { useAuth } from '@/lib/auth-context';
@@ -28,8 +29,16 @@ export function TopNav() {
 
   return (
     <header className="bg-surface flex justify-between items-center h-16 px-4 w-full sticky top-0 z-50 border-b border-outline-variant shadow-none shrink-0">
-      <div className="flex items-center gap-4">
-        <span className="font-headline text-2xl font-bold text-primary">CaragaSense AI</span>
+      <div className="flex items-center gap-3">
+        <Image
+          src="/logo.png"
+          alt="CaragaSense AI"
+          width={36}
+          height={36}
+          className="w-9 h-9 object-contain drop-shadow-sm"
+          priority
+        />
+        <span className="font-headline text-2xl font-bold text-primary tracking-tight">CaragaSense AI</span>
       </div>
       <div className="flex items-center gap-4">
         <div className="hidden md:flex items-center gap-2">

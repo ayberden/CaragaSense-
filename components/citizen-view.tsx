@@ -35,8 +35,10 @@ const SEVERITY_STYLES: Record<SeverityLevel, { badge: string; dot: string }> = {
 const DAMAGE_LABELS: Record<string, string> = {
   pothole: 'Pothole',
   open_manhole: 'Open Manhole',
+  manhole: 'Manhole',
   alligator_crack: 'Alligator Crack',
   block_crack: 'Block Crack',
+  edge_crack: 'Edge Crack',
   longitudinal_crack: 'Longitudinal Crack',
   transverse_crack: 'Transverse Crack',
   rutting: 'Rutting',
@@ -152,15 +154,31 @@ function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: {
     return () => clearTimeout(timer);
   }, [coords]);
 
-  const handleGetLocation = () => {
-    if (!navigator.geolocation) { setError('Geolocation not supported'); return; }
+  const handleGetLocation = useCallback((auto = false) => {
+    if (!navigator.geolocation) { setError('Geolocation not supported. Tap the map to pin the location.'); return; }
     setIsGettingLocation(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => { setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setIsGettingLocation(false); },
-      (err) => { setError(`Location error: ${err.message}`); setIsGettingLocation(false); },
-      { enableHighAccuracy: true }
+      (pos) => {
+        const gps = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        // On the automatic attempt, don't overwrite a pin the user already placed by hand
+        setCoords((prev) => (auto && prev ? prev : gps));
+        setError(null);
+        setIsGettingLocation(false);
+      },
+      (err) => {
+        setError(auto
+          ? `Couldn't detect your location automatically (${err.message}). Tap "Use My GPS Location" or tap the map to pin it.`
+          : `Location error: ${err.message}`);
+        setIsGettingLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
     );
-  };
+  }, []);
+
+  // Auto-locate as soon as the report form opens
+  useEffect(() => {
+    handleGetLocation(true);
+  }, [handleGetLocation]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -242,10 +260,12 @@ function NewReportModal({ onClose, prefill }: { onClose: () => void; prefill?: {
           {/* Location with Map */}
           <div className="space-y-2">
             <label className="text-sm font-bold text-on-surface font-headline">Location</label>
-            <button type="button" onClick={handleGetLocation} disabled={isGettingLocation}
+            <button type="button" onClick={() => handleGetLocation(false)} disabled={isGettingLocation}
               className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg border text-sm font-medium transition-all ${coords ? 'border-severity-low bg-severity-low/10 text-severity-low' : 'border-outline-variant text-on-surface-variant hover:bg-surface-container-high'}`}>
               {isGettingLocation ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
-              {coords ? `📍 ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}` : 'Use My GPS Location'}
+              {isGettingLocation
+                ? 'Detecting your location...'
+                : coords ? `📍 ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}` : 'Use My GPS Location'}
             </button>
             <div className="h-48 rounded-lg overflow-hidden border border-outline-variant">
               <LocationPickerMap coords={coords} onCoordsChange={setCoords} />
@@ -359,9 +379,19 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
       {/* Header */}
       <header className="bg-surface sticky top-0 z-50 border-b border-outline-variant px-4 py-3 shrink-0">
         <div className="max-w-2xl mx-auto flex justify-between items-center">
-          <div>
-            <h1 className="font-headline text-xl font-bold text-primary">CaragaSense</h1>
-            <p className="text-xs text-on-surface-variant font-mono tracking-wider">Hi, {profile?.full_name || user?.email?.split('@')[0] || 'Citizen'} 👋</p>
+          <div className="flex items-center gap-3">
+            <Image
+              src="/logo.png"
+              alt="CaragaSense Logo"
+              width={38}
+              height={38}
+              className="w-9 h-9 object-contain drop-shadow-sm"
+              priority
+            />
+            <div>
+              <h1 className="font-headline text-xl font-bold text-primary tracking-tight">CaragaSense AI</h1>
+              <p className="text-xs text-on-surface-variant font-mono tracking-wider">Hi, {profile?.full_name || user?.email?.split('@')[0] || 'Citizen'} 👋</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">

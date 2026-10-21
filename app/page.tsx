@@ -21,9 +21,19 @@ export type AppTab = 'dashboard' | 'triage' | 'alerts' | 'map' | 'analytics' | '
 
 function LoadingScreen() {
   return (
-    <div className="h-screen flex flex-col items-center justify-center bg-surface gap-3">
-      <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      <p className="text-on-surface-variant font-mono text-sm tracking-wider">LOADING SYSTEM...</p>
+    <div className="h-screen flex flex-col items-center justify-center bg-surface gap-4" suppressHydrationWarning>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo.png"
+        alt="CaragaSense AI"
+        width={80}
+        height={80}
+        className="w-20 h-20 object-contain drop-shadow-md animate-pulse"
+      />
+      <div className="flex items-center gap-2">
+        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+        <p className="text-on-surface-variant font-mono text-sm tracking-wider">LOADING SYSTEM...</p>
+      </div>
     </div>
   );
 }

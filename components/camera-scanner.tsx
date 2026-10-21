@@ -23,25 +23,50 @@ export function CameraScanner({ onDetections, onAnnotatedImage, isActive, onCame
   const [isProcessing, setIsProcessing] = useState(false);
   const [annotatedSrc, setAnnotatedSrc] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  // Ref (not state) so toggling it doesn't re-create the capture interval
+  const processingRef = useRef(false);
+  // Incremented on every start/stop so stale getUserMedia calls can be discarded
+  const startIdRef = useRef(0);
+  // Latest callbacks, read via refs so inline props don't restart the capture loop
+  const onDetectionsRef = useRef(onDetections);
+  const onAnnotatedImageRef = useRef(onAnnotatedImage);
+  onDetectionsRef.current = onDetections;
+  onAnnotatedImageRef.current = onAnnotatedImage;
 
   useEffect(() => {
     onCameraReadyChange?.(cameraReady);
   }, [cameraReady, onCameraReadyChange]);
 
   const startCamera = useCallback(async () => {
+    const startId = ++startIdRef.current;
     setCameraError(null);
+    // Release any stream from a previous attempt before requesting a new one
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       });
+      // A newer start/stop happened while we were waiting — discard this stream
+      if (startId !== startIdRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setCameraReady(true);
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          // play() is aborted when the source changes mid-start; not a real failure
+          if (playErr instanceof DOMException && playErr.name === 'AbortError') return;
+          throw playErr;
+        }
+        if (startId === startIdRef.current) setCameraReady(true);
       }
     } catch (err: unknown) {
+      if (startId !== startIdRef.current) return;
       const msg = err instanceof Error ? err.message : 'Camera access denied';
       setCameraError(msg);
       setCameraReady(false);
@@ -49,6 +74,7 @@ export function CameraScanner({ onDetections, onAnnotatedImage, isActive, onCame
   }, [facingMode]);
 
   const stopCamera = useCallback(() => {
+    startIdRef.current++; // invalidate any in-flight start
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -70,9 +96,10 @@ export function CameraScanner({ onDetections, onAnnotatedImage, isActive, onCame
     if (!cameraReady || !isActive) return;
 
     const captureAndDetect = async () => {
-      if (isProcessing || !videoRef.current || !canvasRef.current) return;
+      if (processingRef.current || !videoRef.current || !canvasRef.current) return;
       const video = videoRef.current;
       const canvas = canvasRef.current;
+      if (!video.videoWidth || !video.videoHeight) return; // video not ready yet
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
@@ -80,6 +107,7 @@ export function CameraScanner({ onDetections, onAnnotatedImage, isActive, onCame
       ctx.drawImage(video, 0, 0);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
 
+      processingRef.current = true;
       setIsProcessing(true);
       try {
         const apiUrl = `http://${window.location.hostname}:5000/detect`;
@@ -90,21 +118,24 @@ export function CameraScanner({ onDetections, onAnnotatedImage, isActive, onCame
         });
         if (resp.ok) {
           const data = await resp.json();
-          if (data.detections) onDetections(data.detections);
+          if (data.detections) onDetectionsRef.current(data.detections);
           if (data.annotated_image) {
             setAnnotatedSrc(data.annotated_image);
-            onAnnotatedImage?.(data.annotated_image);
+            onAnnotatedImageRef.current?.(data.annotated_image);
           }
         }
       } catch { /* API not reachable, silent fail */ }
-      finally { setIsProcessing(false); }
+      finally {
+        processingRef.current = false;
+        setIsProcessing(false);
+      }
     };
 
     intervalRef.current = setInterval(captureAndDetect, 1500);
     // Run one immediately
     captureAndDetect();
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [cameraReady, isActive, isProcessing, onDetections]);
+  }, [cameraReady, isActive]);
 
   const flipCamera = () => {
     stopCamera();
