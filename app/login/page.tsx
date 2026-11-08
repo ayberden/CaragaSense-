@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { DEV_BYPASS } from '@/lib/dev-config';
 import { devLogin } from '@/lib/auth-context';
 import Image from 'next/image';
-import { Shield, Eye, EyeOff, ArrowRight, AlertCircle, Wrench, Users, ShieldCheck } from 'lucide-react';
+import { Shield, Eye, EyeOff, ArrowRight, ArrowLeft, AlertCircle, Wrench, Users, ShieldCheck, KeyRound, CheckCircle2 } from 'lucide-react';
 import type { UserRole } from '@/lib/database.types';
 
 // ── Dev Login Panel ───────────────────────────────────────────────────────────
@@ -78,6 +78,7 @@ function DevLoginPanel() {
 // ── Production Login Form ─────────────────────────────────────────────────────
 function ProductionLoginForm() {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -86,6 +87,25 @@ function ProductionLoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const supabase = createClient();
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMessage(null);
+    setIsLoading(true);
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/update-password`,
+      });
+      if (resetError) throw resetError;
+      setSuccessMessage('Password recovery link sent! Please check your email inbox to reset your password.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to send recovery link');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,6 +137,82 @@ function ProductionLoginForm() {
     }
   };
 
+  // ── Forgot Password Screen ──────────────────────────────────────────────────
+  if (isForgotPassword) {
+    return (
+      <div className="p-6 space-y-5">
+        <div className="text-center space-y-2">
+          <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto">
+            <KeyRound className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold font-headline text-on-surface">Reset Password</h2>
+          <p className="text-xs text-on-surface-variant max-w-xs mx-auto">
+            Enter your registered email address and we will send you a secure link to reset your password.
+          </p>
+        </div>
+
+        {successMessage && (
+          <div className="bg-severity-low/10 border border-severity-low/30 text-severity-low rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            {successMessage}
+          </div>
+        )}
+        {error && (
+          <div className="bg-error-container/50 border border-error/20 text-on-error-container rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleResetPassword} className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="reset-email" className="text-sm font-bold text-on-surface font-headline">Email Address</label>
+            <input
+              id="reset-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              className="w-full px-4 py-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface placeholder:text-outline focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all text-sm"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full bg-primary text-white font-headline font-bold text-base py-3.5 rounded-lg flex items-center justify-center gap-2 shadow-sm shadow-primary/20 hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+          >
+            {isLoading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                Send Reset Link
+                <ArrowRight className="w-5 h-5" />
+              </>
+            )}
+          </button>
+        </form>
+
+        <div className="text-center pt-2">
+          <button
+            type="button"
+            onClick={() => {
+              setIsForgotPassword(false);
+              setError(null);
+              setSuccessMessage(null);
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-on-surface-variant hover:text-primary transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to Sign In
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Standard Sign In / Sign Up Form ─────────────────────────────────────────
   return (
     <>
       {/* Tab Switcher */}
@@ -141,7 +237,8 @@ function ProductionLoginForm() {
 
       <form onSubmit={handleSubmit} className="p-6 space-y-5">
         {successMessage && (
-          <div className="bg-severity-low/10 border border-severity-low/30 text-severity-low rounded-lg px-4 py-3 text-sm font-medium">
+          <div className="bg-severity-low/10 border border-severity-low/30 text-severity-low rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
             {successMessage}
           </div>
         )}
@@ -171,7 +268,22 @@ function ProductionLoginForm() {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="password" className="text-sm font-bold text-on-surface font-headline">Password</label>
+          <div className="flex items-center justify-between">
+            <label htmlFor="password" className="text-sm font-bold text-on-surface font-headline">Password</label>
+            {!isSignUp && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsForgotPassword(true);
+                  setError(null);
+                  setSuccessMessage(null);
+                }}
+                className="text-xs font-semibold text-primary hover:underline transition-colors"
+              >
+                Forgot Password?
+              </button>
+            )}
+          </div>
           <div className="relative">
             <input id="password" type={showPassword ? 'text' : 'password'} value={password}
               onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required minLength={6}

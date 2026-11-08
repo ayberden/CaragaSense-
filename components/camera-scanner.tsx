@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, CameraOff, Loader2, FlipHorizontal, Square } from 'lucide-react';
 
 import type { Detection } from '@/lib/detection-utils';
+import { getPythonApiUrl } from '@/lib/api-config';
 
 interface CameraScannerProps {
   onDetections: (dets: Detection[]) => void;
@@ -110,7 +111,7 @@ export function CameraScanner({ onDetections, onAnnotatedImage, isActive, onCame
       processingRef.current = true;
       setIsProcessing(true);
       try {
-        const apiUrl = `http://${window.location.hostname}:5000/detect`;
+        const apiUrl = `${getPythonApiUrl()}/detect`;
         const resp = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

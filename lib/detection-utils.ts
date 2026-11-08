@@ -4,11 +4,27 @@ export interface Detection {
   class: string;
   confidence: number;
   bbox?: number[];
+  bbox_ratio?: number;
   /** Optional fields populated by the AI crack-type classifier */
   crack_type?: string;
   crack_label?: string;
   crack_description?: string;
 }
+
+/** Hazard weights based on municipal road safety and structural damage risk */
+export const CLASS_HAZARD_WEIGHT: Record<string, number> = {
+  open_manhole: 1.0,        // Direct life and rollover/pedestrian hazard
+  pothole: 0.9,             // High tire/rim blowout and motorcycle accident risk
+  alligator_crack: 0.7,     // Severe sub-base fatigue / pavement collapse
+  rutting: 0.65,            // Wheel path depression, water pooling / hydroplaning
+  block_crack: 0.5,         // Advanced grid fatigue
+  edge_crack: 0.45,         // Edge breakup due to lack of shoulder support
+  longitudinal_crack: 0.35, // Pavement joint/seam separation
+  transverse_crack: 0.35,   // Thermal shrinkage cracking
+  manhole_cover: 0.2,       // Normal sealed utility cover
+  manhole: 0.2,             // Normal utility cover
+  other: 0.4,
+};
 
 const CLASS_MAP: Record<string, DamageType> = {
   // ── YOLOv11s model classes (my_model.pt) ──────────────────────────────────
@@ -19,9 +35,11 @@ const CLASS_MAP: Record<string, DamageType> = {
   longitudinal_crack: 'longitudinal_crack',
   transverse_crack: 'transverse_crack',
   manhole: 'manhole',
+  manhole_cover: 'manhole',
   open_manhole: 'open_manhole',
   // ── Alternate spellings / spaces ──────────────────────────────────────────
   'open manhole': 'open_manhole',
+  'manhole cover': 'manhole',
   'alligator crack': 'alligator_crack',
   'block crack': 'block_crack',
   'edge crack': 'edge_crack',
@@ -45,9 +63,11 @@ const RAW_CLASS_DISPLAY: Record<string, string> = {
   longitudinal_crack: 'Longitudinal Crack',
   transverse_crack: 'Transverse Crack',
   manhole: 'Manhole',
+  manhole_cover: 'Manhole Cover',
   open_manhole: 'Open Manhole',
   // ── Alternate spellings ───────────────────────────────────────────────────
   'open manhole': 'Open Manhole',
+  'manhole cover': 'Manhole Cover',
   'alligator crack': 'Alligator Crack',
   'block crack': 'Block Crack',
   'edge crack': 'Edge Crack',
@@ -62,8 +82,10 @@ const RAW_CLASS_DISPLAY: Record<string, string> = {
 const DAMAGE_LABELS: Record<DamageType, string> = {
   pothole: 'Pothole',
   open_manhole: 'Open Manhole',
+  manhole: 'Manhole',
   alligator_crack: 'Alligator Crack',
   block_crack: 'Block Crack',
+  edge_crack: 'Edge Crack',
   longitudinal_crack: 'Longitudinal Crack',
   transverse_crack: 'Transverse Crack',
   rutting: 'Rutting',
@@ -110,13 +132,76 @@ export function getMaxConfidence(detections: Detection[]): number {
   return Math.max(...detections.map((d) => d.confidence));
 }
 
-/** Infer severity from detection count and confidence */
-export function inferSeverity(detections: Detection[]): SeverityLevel {
-  const maxConf = getMaxConfidence(detections);
+/**
+ * Infer enhanced severity based on:
+ * 1. Damage class hazard weighting (e.g. Open Manhole / Pothole vs Hairline Cracks)
+ * 2. Defect physical size / bounding box area ratio
+ * 3. YOLO detection confidence
+ * 4. Defect clustering and multi-damage compounding
+ */
+export function inferSeverity(
+  detections: Detection[],
+  frameWidth = 640,
+  frameHeight = 640
+): SeverityLevel {
+  if (detections.length === 0) return 'low';
+
   const total = detections.length;
-  if (total >= 5 || (total >= 3 && maxConf >= 0.8)) return 'critical';
-  if (total >= 3 || (total >= 2 && maxConf >= 0.7)) return 'high';
-  if (total >= 2 || maxConf >= 0.6) return 'medium';
+  const frameArea = frameWidth * frameHeight;
+
+  // ── Immediate Safety Override Checks ──────────────────────────────────────────
+  for (const det of detections) {
+    const classKey = det.class.toLowerCase().replace(/\s+/g, '_');
+    const conf = det.confidence;
+    const areaRatio = det.bbox_ratio ?? (det.bbox ? (det.bbox[2] * det.bbox[3]) / frameArea : 0.03);
+
+    // Open manhole is an immediate severe road safety & falling hazard
+    if (classKey === 'open_manhole' && conf >= 0.65) {
+      return 'critical';
+    }
+
+    // Large or deep pothole (occupies >= 8% of the view or very high confidence)
+    if (classKey === 'pothole') {
+      if (areaRatio >= 0.08 && conf >= 0.70) return 'critical';
+      if (conf >= 0.85 && areaRatio >= 0.04) return 'critical';
+      if (conf >= 0.75) {
+        // High priority for prominent potholes
+        if (total >= 2) return 'critical';
+      }
+    }
+  }
+
+  // ── Weighted Composite Hazard Calculation ─────────────────────────────────────
+  let totalHazardScore = 0;
+
+  for (const det of detections) {
+    const classKey = det.class.toLowerCase().replace(/\s+/g, '_');
+    const hazardWeight = CLASS_HAZARD_WEIGHT[classKey] ?? 0.4;
+    const conf = det.confidence;
+
+    // Bounding box area ratio relative to frame
+    const areaRatio = det.bbox_ratio ?? (det.bbox ? (det.bbox[2] * det.bbox[3]) / frameArea : 0.03);
+
+    // Size multiplier: larger defects represent deeper cavities or wider breakups
+    let sizeMultiplier = 1.0;
+    if (areaRatio >= 0.08) {
+      sizeMultiplier = 1.5; // Large defect
+    } else if (areaRatio >= 0.03) {
+      sizeMultiplier = 1.2; // Medium defect
+    }
+
+    const itemScore = hazardWeight * conf * sizeMultiplier;
+    totalHazardScore += itemScore;
+  }
+
+  // Multi-defect compound factor (multiple co-located defects indicate structural base failure)
+  const compoundMultiplier = 1 + Math.min(total - 1, 5) * 0.15;
+  const finalScore = totalHazardScore * compoundMultiplier;
+
+  // ── Calibrated Severity Thresholds ───────────────────────────────────────────
+  if (finalScore >= 2.2) return 'critical';
+  if (finalScore >= 1.4) return 'high';
+  if (finalScore >= 0.7) return 'medium';
   return 'low';
 }
 
@@ -141,6 +226,7 @@ export function generateDescription(detections: Detection[]): string {
   // Build damage list string — e.g. "3 open manholes", "1 pothole and 2 alligator cracks"
   const IRREGULAR_PLURALS: Record<string, string> = {
     'manhole': 'manholes',
+    'manhole cover': 'manhole covers',
     'open manhole': 'open manholes',
     'pothole': 'potholes',
     'alligator crack': 'alligator cracks',

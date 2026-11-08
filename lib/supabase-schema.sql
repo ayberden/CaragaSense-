@@ -162,10 +162,34 @@ CREATE POLICY "Profiles are viewable by everyone"
   ON profiles FOR SELECT
   USING (true);
 
--- Users can only update their own profile
+-- Users can only update their own profile (names, avatar, phone)
 CREATE POLICY "Users can update own profile"
   ON profiles FOR UPDATE
   USING (auth.uid() = id);
+
+-- Security: Prevent unauthorized role escalation
+-- Ensures users cannot update their own role column to admin/engineer
+CREATE OR REPLACE FUNCTION protect_profile_role()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.role IS DISTINCT FROM OLD.role THEN
+    -- Only allow role changes if performed by an existing admin or service_role
+    IF NOT EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid()
+      AND profiles.role = 'admin'
+    ) THEN
+      RAISE EXCEPTION 'Access Denied: You cannot modify your own or another user role.';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS tr_protect_profile_role ON profiles;
+CREATE TRIGGER tr_protect_profile_role
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION protect_profile_role();
 
 -- REPORTS
 ALTER TABLE reports ENABLE ROW LEVEL SECURITY;

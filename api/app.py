@@ -12,6 +12,7 @@ Endpoints:
 import base64
 import os
 import time
+import functools
 import threading
 import uuid
 from pathlib import Path
@@ -21,10 +22,42 @@ import numpy as np
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
 from ultralytics import YOLO
+from werkzeug.utils import secure_filename
 
 # ── App setup ────────────────────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app, origins="*")  # Allow Next.js on port 3001
+# Hardened: Enforce max upload size to prevent memory & disk-exhaustion DoS (32MB)
+app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
+
+# Hardened CORS: allow localhost ports by default, or configurable via ALLOWED_ORIGINS
+_raw_origins = os.environ.get(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
+).split(",")
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins if o.strip()]
+CORS(app, origins=ALLOWED_ORIGINS, supports_credentials=True)
+
+# ── Security: Optional API Key Protection ────────────────────────────────────
+API_KEY = os.environ.get("CARAGASENSE_API_KEY")
+
+def require_api_key(func):
+    """Protects endpoints when CARAGASENSE_API_KEY is configured."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        if not API_KEY:
+            return func(*args, **kwargs)
+        auth_header = request.headers.get("Authorization") or request.headers.get("X-API-Key")
+        if not auth_header:
+            return jsonify({"error": "Unauthorized: Missing API Key"}), 401
+        token = auth_header.replace("Bearer ", "").strip()
+        if token != API_KEY:
+            return jsonify({"error": "Forbidden: Invalid API Key"}), 403
+        return func(*args, **kwargs)
+    return wrapper
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({"error": "Payload exceeds maximum allowed size (32MB)"}), 413
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -37,7 +70,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 #   2. Legacy absolute path (kept for backward compatibility)
 #   3. Generic YOLOv11n fallback
 MODELS_DIR = BASE_DIR / "models"
-LEGACY_MODEL_PATH = Path(r"C:\Users\IVERDEEN.DESKTOP-SN548D5\Desktop\yolo\my_model\my_model.pt")
+LEGACY_MODEL_PATH = Path(r"C:\Users\IVERDEEN.DESKTOP-SN548D5\Desktop\yolo\my_model\my_model1")
 FALLBACK_MODEL = "yolo11n.pt"
 
 _model = None
@@ -109,6 +142,8 @@ def run_detection(frame_bgr: np.ndarray, conf_threshold: float = CONF_THRESHOLD)
 
     detections = []
     annotated = frame_bgr.copy()
+    img_h, img_w = frame_bgr.shape[:2]
+    img_area = max(img_h * img_w, 1)
 
     boxes = results[0].boxes
     for i in range(len(boxes)):
@@ -123,10 +158,15 @@ def run_detection(frame_bgr: np.ndarray, conf_threshold: float = CONF_THRESHOLD)
         if conf < conf_threshold:
             continue
 
+        box_w = int(max(0, xmax - xmin))
+        box_h = int(max(0, ymax - ymin))
+        bbox_ratio = round((box_w * box_h) / img_area, 4)
+
         detection = {
             'class':      cls_name.lower(),
             'confidence': round(conf, 4),
-            'bbox':       [int(xmin), int(ymin), int(xmax - xmin), int(ymax - ymin)],
+            'bbox':       [int(xmin), int(ymin), box_w, box_h],
+            'bbox_ratio': bbox_ratio,
         }
 
         detections.append(detection)
@@ -184,6 +224,7 @@ def health():
 
 
 @app.route("/detect", methods=["POST"])
+@require_api_key
 def detect():
     """
     Accepts JSON: { "image": "<data:image/jpeg;base64,...>" }
@@ -203,7 +244,13 @@ def detect():
     return jsonify({"detections": detections, "annotated_image": annotated_b64})
 
 
+ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+ALLOWED_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
+ALLOWED_EXTS = ALLOWED_IMAGE_EXTS | ALLOWED_VIDEO_EXTS
+
+
 @app.route("/upload", methods=["POST"])
+@require_api_key
 def upload():
     """
     Accepts multipart/form-data with a 'file' field (image or video).
@@ -213,15 +260,23 @@ def upload():
         return jsonify({"error": "No file provided"}), 400
 
     file = request.files["file"]
-    ext = Path(file.filename).suffix.lower() if file.filename else ".jpg"
+    if not file.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    safe_original_name = secure_filename(file.filename)
+    ext = Path(safe_original_name).suffix.lower()
+
+    # Hardened: Validate file extension
+    if ext not in ALLOWED_EXTS:
+        return jsonify({"error": f"File type not allowed. Supported: {', '.join(sorted(ALLOWED_EXTS))}"}), 400
+
     filename = f"{uuid.uuid4().hex}{ext}"
-    save_path = UPLOAD_DIR / filename
+    save_path = (UPLOAD_DIR / filename).resolve()
 
     file.save(str(save_path))
 
     # Determine type
-    video_exts = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
-    is_video = ext in video_exts
+    is_video = ext in ALLOWED_VIDEO_EXTS
 
     if is_video:
         # For video, serve as-is and stream via /video_feed?file=<filename>
@@ -356,10 +411,12 @@ def video_feed():
     """MJPEG stream. Optionally accepts ?file=<filename> for uploaded videos."""
     file_param = request.args.get("file")
     if file_param:
-        filepath = str(UPLOAD_DIR / file_param)
-        if not os.path.exists(filepath):
+        safe_name = secure_filename(file_param)
+        filepath = (UPLOAD_DIR / safe_name).resolve()
+        # Hardened: Prevent path traversal outside UPLOAD_DIR
+        if not filepath.is_relative_to(UPLOAD_DIR.resolve()) or not filepath.is_file():
             return jsonify({"error": "File not found"}), 404
-        gen = _generate_file_feed(filepath)
+        gen = _generate_file_feed(str(filepath))
     else:
         gen = _generate_webcam_feed()
 
@@ -368,7 +425,8 @@ def video_feed():
 
 @app.route("/uploads/<path:filename>")
 def serve_upload(filename):
-    return send_from_directory(str(UPLOAD_DIR), filename)
+    safe_name = secure_filename(filename)
+    return send_from_directory(str(UPLOAD_DIR.resolve()), safe_name)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ interface VideoFeedProps {
 }
 
 export function VideoFeed({ url, onStop }: VideoFeedProps) {
-  const [defaultUrl, setDefaultUrl] = useState('http://localhost:5000/video_feed');
+  const [defaultUrl, setDefaultUrl] = useState(() => `${getPythonApiUrl()}/video_feed`);
   const [hasError, setHasError] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -71,7 +71,7 @@ export function VideoFeed({ url, onStop }: VideoFeedProps) {
                 </div>
                 <div className="flex items-center gap-2 text-white/30 text-[10px] font-mono">
                   <Wifi className="w-3 h-3" />
-                  YOLO API: http://localhost:5000
+                  YOLO API: {getPythonApiUrl()}
                 </div>
               </div>
             ) : (

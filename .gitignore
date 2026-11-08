@@ -5,6 +5,8 @@ coverage/
 *.log
 .env*
 !.env.example
+*.bak
 *.pt
+!api/models/best.pt
 *.tsbuildinfo
 api/uploads/

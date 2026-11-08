@@ -6,6 +6,7 @@ import { useReportTimeline, useUpdateReportStatus } from '@/hooks/use-reports';
 import {
   X, MapPin, Clock, CheckCircle2, AlertTriangle, Send, Loader2,
   ChevronDown, User, Calendar, Zap, Shield, FileText, ArrowRight,
+  Maximize2, ExternalLink,
 } from 'lucide-react';
 import Image from 'next/image';
 import type { Report, ReportStatus, SeverityLevel } from '@/lib/database.types';
@@ -111,6 +112,7 @@ export function ReportDetailModal({ report, onClose }: { report: Report; onClose
   const { updateStatus, isUpdating } = useUpdateReportStatus();
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(report.status);
+  const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'engineer';
   const styles = SEVERITY_STYLES[report.severity];
@@ -143,47 +145,146 @@ export function ReportDetailModal({ report, onClose }: { report: Report; onClose
   return (
     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
-      <div className="relative bg-surface-container-lowest w-full max-w-2xl rounded-t-2xl md:rounded-2xl border border-outline-variant shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
-        {/* Header with Image */}
-        <div className="relative h-48 md:h-56 shrink-0">
-          <Image src={img} alt={report.damage_type} fill className="object-cover" unoptimized referrerPolicy="no-referrer" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 bg-black/40 backdrop-blur-sm text-white p-2 rounded-full hover:bg-black/60 transition-colors z-10"
+      {/* Fullscreen Image Lightbox Modal */}
+      {isImageViewerOpen && (
+        <div
+          className="fixed inset-0 z-[150] bg-black/95 backdrop-blur-md flex flex-col items-center justify-between p-3 md:p-6 animate-in fade-in duration-200"
+          onClick={() => setIsImageViewerOpen(false)}
+        >
+          {/* Lightbox Top Header */}
+          <div
+            className="w-full max-w-5xl flex items-center justify-between text-white z-10 py-2 border-b border-white/10 shrink-0"
+            onClick={(e) => e.stopPropagation()}
           >
-            <X className="w-5 h-5" />
-          </button>
-
-          {/* Badges overlay */}
-          <div className="absolute top-3 left-3 flex items-center gap-2">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow text-xs font-mono font-bold ${styles.badge}`}>
-              <span className={`w-2 h-2 rounded-full ${styles.dot}`} />
-              {report.severity.charAt(0).toUpperCase() + report.severity.slice(1)}
-            </span>
-            {report.confidence !== null && (
-              <span className="bg-black/50 backdrop-blur-sm text-white px-2.5 py-1 rounded-full text-xs font-mono font-bold">
-                AI: {Math.round(report.confidence * 100)}%
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h3 className="font-headline font-bold text-base md:text-lg">
+                {DAMAGE_LABELS[report.damage_type] || report.damage_type}
+              </h3>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${styles.badge}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${styles.dot}`} />
+                {report.severity.toUpperCase()}
               </span>
-            )}
+              {report.confidence !== null && (
+                <span className="bg-white/10 text-white px-2 py-0.5 rounded text-xs font-mono font-bold">
+                  AI: {Math.round(report.confidence * 100)}%
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <a
+                href={img}
+                target="_blank"
+                rel="noreferrer"
+                className="hidden sm:inline-flex items-center gap-1 text-xs text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Original
+              </a>
+              <button
+                onClick={() => setIsImageViewerOpen(false)}
+                className="p-1.5 md:p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                title="Close fullscreen view"
+              >
+                <X className="w-5 h-5 md:w-6 md:h-6" />
+              </button>
+            </div>
           </div>
 
-          {/* Title overlay */}
-          <div className="absolute bottom-3 left-4 right-4">
-            <h2 className="font-headline text-2xl font-bold text-white drop-shadow-lg">
-              {DAMAGE_LABELS[report.damage_type] || report.damage_type}
-            </h2>
-            <div className="flex items-center gap-1.5 text-white/80 text-sm mt-1">
-              <MapPin className="w-3.5 h-3.5 shrink-0" />
+          {/* Lightbox Full Image View */}
+          <div
+            className="relative flex-1 w-full max-w-5xl my-3 flex items-center justify-center overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative w-full h-full max-h-[78vh] flex items-center justify-center">
+              <Image
+                src={img}
+                alt={report.damage_type}
+                fill
+                className="object-contain drop-shadow-2xl"
+                unoptimized
+                referrerPolicy="no-referrer"
+                priority
+              />
+            </div>
+          </div>
+
+          {/* Lightbox Bottom Footer info */}
+          <div
+            className="w-full max-w-5xl flex items-center justify-between text-xs text-white/70 pt-2 border-t border-white/10 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
               <span className="truncate">
                 {report.address || `${report.latitude.toFixed(5)}, ${report.longitude.toFixed(5)}`}
               </span>
             </div>
+            <span className="font-mono text-[11px] text-white/50 shrink-0">
+              Click anywhere outside or press X to close
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Main Details Modal */}
+      <div className="relative bg-surface-container-lowest w-full max-w-2xl rounded-t-2xl md:rounded-2xl border border-outline-variant shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
+        {/* Modal Header */}
+        <div className="px-5 py-4 border-b border-outline-variant bg-surface-container-lowest flex items-center justify-between shrink-0">
+          <div className="min-w-0 pr-3">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <h2 className="font-headline text-xl font-bold text-on-surface truncate">
+                {DAMAGE_LABELS[report.damage_type] || report.damage_type}
+              </h2>
+              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${styles.badge}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${styles.dot}`} />
+                {report.severity.charAt(0).toUpperCase() + report.severity.slice(1)}
+              </span>
+              {report.confidence !== null && (
+                <span className="bg-surface-container text-on-surface-variant px-2 py-0.5 rounded text-xs font-mono font-bold">
+                  AI: {Math.round(report.confidence * 100)}%
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 text-on-surface-variant text-xs truncate">
+              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span className="truncate">
+                {report.address || `${report.latitude.toFixed(5)}, ${report.longitude.toFixed(5)}`}
+              </span>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-full transition-colors shrink-0"
+            title="Close details"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Uncropped Detected Damage Image Container */}
+        <div
+          onClick={() => setIsImageViewerOpen(true)}
+          className="relative w-full bg-slate-950 flex items-center justify-center cursor-pointer group shrink-0 h-64 md:h-80 overflow-hidden border-b border-outline-variant select-none"
+          title="Click to view full image"
+        >
+          <Image
+            src={img}
+            alt={report.damage_type}
+            fill
+            className="object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+            unoptimized
+            referrerPolicy="no-referrer"
+            priority
+          />
+
+          {/* Click for Full View Pill */}
+          <div className="absolute bottom-3 right-3 bg-black/75 hover:bg-black/90 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 backdrop-blur-md shadow-lg border border-white/20 transition-all group-hover:scale-105">
+            <Maximize2 className="w-3.5 h-3.5 text-primary" />
+            <span className="font-semibold">View Full Image</span>
           </div>
         </div>
 
