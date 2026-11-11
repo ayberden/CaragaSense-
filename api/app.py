@@ -13,6 +13,7 @@ import base64
 import os
 import time
 import functools
+import re
 import threading
 import uuid
 from pathlib import Path
@@ -35,6 +36,11 @@ _raw_origins = os.environ.get(
     "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
 ).split(",")
 ALLOWED_ORIGINS = [o.strip() for o in _raw_origins if o.strip()]
+# Live frontend on Vercel (production domain + preview deployments)
+ALLOWED_ORIGINS += [
+    "https://caraga-sense.vercel.app",
+    re.compile(r"^https://caraga-sense[a-z0-9-]*\.vercel\.app$"),
+]
 CORS(app, origins=ALLOWED_ORIGINS, supports_credentials=True)
 
 # ── Security: Optional API Key Protection ────────────────────────────────────
