@@ -30,18 +30,8 @@ app = Flask(__name__)
 # Hardened: Enforce max upload size to prevent memory & disk-exhaustion DoS (32MB)
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
-# Hardened CORS: allow localhost ports by default, or configurable via ALLOWED_ORIGINS
-_raw_origins = os.environ.get(
-    "ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
-).split(",")
-ALLOWED_ORIGINS = [o.strip() for o in _raw_origins if o.strip()]
-# Live frontend on Vercel (production domain + preview deployments)
-ALLOWED_ORIGINS += [
-    "https://caraga-sense.vercel.app",
-    re.compile(r"^https://caraga-sense[a-z0-9-]*\.vercel\.app$"),
-]
-CORS(app, origins=ALLOWED_ORIGINS, supports_credentials=True)
+# CORS: Allow all origins so Vercel domains, preview URLs, and localhost connect seamlessly
+CORS(app, origins="*")
 
 # ── Security: Optional API Key Protection ────────────────────────────────────
 API_KEY = os.environ.get("CARAGASENSE_API_KEY")

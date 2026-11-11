@@ -354,8 +354,12 @@ export function CitizenView({ onViewReport }: { onViewReport?: (report: Report) 
       } else {
         setUploadError('Upload failed: ' + (data.error || 'Unknown error'));
       }
-    } catch {
-      setUploadError('The AI Detection API is not reachable. Make sure the Python server is running locally, or configure NEXT_PUBLIC_PYTHON_API_URL for deployment.');
+    } catch (err: unknown) {
+      const targetUrl = `${getPythonApiUrl()}/upload`;
+      const errDetail = err instanceof Error ? err.message : String(err);
+      setUploadError(
+        `The AI Detection API is not reachable at "${targetUrl}". Error: ${errDetail}. (Note: Render's free tier sleeps after inactivity and takes ~45s to wake up on the first request).`
+      );
     } finally {
       setIsUploading(false);
     }
