@@ -13,6 +13,7 @@ import base64
 import os
 import time
 import functools
+import gc
 import re
 import threading
 import uuid
@@ -20,10 +21,14 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import torch
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
 from ultralytics import YOLO
 from werkzeug.utils import secure_filename
+
+# Limit PyTorch to single-thread CPU to stay strictly within Render's 512MB RAM limit
+torch.set_num_threads(1)
 
 # ── App setup ────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -97,6 +102,10 @@ def load_model():
         else:
             print(f"[CaragaSense] No custom model found. Loading fallback: {FALLBACK_MODEL}")
             _model = YOLO(FALLBACK_MODEL)
+        try:
+            _model.fuse()
+        except Exception:
+            pass
         print(f"[CaragaSense] Model loaded. Classes: {_model.names}")
         return _model
 
@@ -133,8 +142,18 @@ def run_detection(frame_bgr: np.ndarray, conf_threshold: float = CONF_THRESHOLD)
     Run YOLO inference on a BGR numpy frame.
     Returns (detections_list, annotated_bgr_frame).
     """
+    # Downscale oversized frames to prevent memory spikes on 512MB RAM cloud hosts
+    h, w = frame_bgr.shape[:2]
+    max_dim = max(h, w)
+    if max_dim > 1024:
+        scale = 1024.0 / max_dim
+        frame_bgr = cv2.resize(frame_bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
     model = load_model()
-    results = model(frame_bgr, conf=conf_threshold, verbose=False)
+
+    # Memory-optimized inference mode (no autograd overhead)
+    with torch.inference_mode():
+        results = model(frame_bgr, conf=conf_threshold, imgsz=640, device='cpu', verbose=False)
 
     detections = []
     annotated = frame_bgr.copy()
@@ -181,6 +200,10 @@ def run_detection(frame_bgr: np.ndarray, conf_threshold: float = CONF_THRESHOLD)
                       color, cv2.FILLED)
         cv2.putText(annotated, label, (xmin, label_ymin - 7),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+    # Immediately release PyTorch output tensor memory
+    del results
+    gc.collect()
 
     return detections, annotated
 
