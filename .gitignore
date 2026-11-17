@@ -8,5 +8,7 @@ coverage/
 *.bak
 *.pt
 !api/models/best.pt
+!hf-deployment/models/best.pt
 *.tsbuildinfo
 api/uploads/
+hf-deployment/uploads/
