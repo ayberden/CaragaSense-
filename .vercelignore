@@ -1,5 +1,5 @@
 api/
+hf-deployment/
 *.pt
 yolo11n.pt
 seed.js
-

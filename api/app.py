@@ -451,12 +451,13 @@ def serve_upload(filename):
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     resolved = _resolve_model_path()
+    port = int(os.environ.get("PORT", 5000))
     print("=" * 60)
     print("  CaragaSense Detection API")
-    print("  Starting on http://0.0.0.0:5000")
+    print(f"  Starting on http://0.0.0.0:{port}")
     print(f"  Models dir:  {MODELS_DIR}")
     print(f"  Model found: {resolved or 'None — will use fallback'}")
     print("=" * 60)
     # Pre-load model on startup
     load_model()
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
