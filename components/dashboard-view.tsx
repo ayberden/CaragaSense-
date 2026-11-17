@@ -27,23 +27,29 @@ export function DashboardView() {
     const formData = new FormData();
     formData.append('file', file);
 
+    const apiUrl = `${getPythonApiUrl()}/upload`;
     try {
-      const apiUrl = `${getPythonApiUrl()}/upload`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         body: formData,
       });
 
-      const data = await response.json();
+      let data: { url?: string; error?: string } = {};
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(`Server returned HTTP ${response.status} (non-JSON response)`);
+      }
       if (response.ok && data.url) {
         setStreamUrl(data.url);
         setScanMode('upload');
       } else {
-        alert("Upload failed: " + (data.error || "Unknown error"));
+        alert("Upload failed: " + (data.error || `HTTP ${response.status}`));
       }
     } catch (err) {
       console.error("Upload error:", err);
-      alert("Failed to connect to the Python API. Ensure the Python server is running on port 5000.");
+      const reason = err instanceof Error ? err.message : String(err);
+      alert(`Failed to reach the AI Detection API at:\n${apiUrl}\n\nError: ${reason}\n\nIf this URL is wrong, update NEXT_PUBLIC_PYTHON_API_URL on Vercel and redeploy.`);
     } finally {
       setIsUploading(false);
       if (event.target) {
